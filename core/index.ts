@@ -59,7 +59,7 @@ export {
   Diode, D,
   LEDComponent, LED, createLED, RED, GREEN, BLUE, YELLOW, WHITE, ORANGE,
   VoltageSource, DC, AC,
-  CurrentSource, I_DC, I_AC,
+  CurrentSource, IDC, IAC,
   Ground, GND,
   type DiodeParams,
   type LEDParams,
