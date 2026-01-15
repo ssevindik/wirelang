@@ -5,14 +5,14 @@
  */
 
 import {
-  // Circuit container
-  Circuit, createCircuit,
+  // Schematic container
+  Schematic, createSchematic,
   
   // Components
   R, C, L, D, createLED, DC, AC, GND,
   
   // DSL functions
-  Series, Parallel, buildCircuit, applyToCircuit,
+  Series, Parallel, Circuit, applyToCircuit,
   
   // Units
   kOhm, uF, mH, kHz,
@@ -26,15 +26,13 @@ import {
 // DC source -> Resistor -> LED -> Ground
 // =============================================================================
 
-export function simpleLedCircuit(): Circuit {
-  const circuit = buildCircuit('LED Blinker',
+export function simpleLedCircuit(): Schematic {
+  return Circuit('LED Blinker',
     DC(5),
     R(330),
     createLED(RED),
     GND()
   );
-  
-  return circuit;
 }
 
 // =============================================================================
@@ -42,8 +40,8 @@ export function simpleLedCircuit(): Circuit {
 // Two resistors in series creating a voltage divider
 // =============================================================================
 
-export function voltageDivider(): Circuit {
-  const circuit = createCircuit('Voltage Divider');
+export function voltageDivider(): Schematic {
+  const s = createSchematic('Voltage Divider');
   
   const source = DC(12);
   const r1 = R(kOhm(10));
@@ -52,12 +50,12 @@ export function voltageDivider(): Circuit {
   
   // Build series connection
   const result = Series(source, r1, r2, ground);
-  applyToCircuit(circuit, result);
+  applyToCircuit(s, result);
   
   // The midpoint between r1 and r2 is our voltage divider output
   // In this case, r1.p2 and r2.p1 are connected to the same node
   
-  return circuit;
+  return s;
 }
 
 // =============================================================================
@@ -65,8 +63,8 @@ export function voltageDivider(): Circuit {
 // Three resistors in parallel
 // =============================================================================
 
-export function parallelResistors(): Circuit {
-  const circuit = createCircuit('Parallel Resistors');
+export function parallelResistors(): Schematic {
+  const s = createSchematic('Parallel Resistors');
   
   const result = Series(
     DC(9),
@@ -78,8 +76,8 @@ export function parallelResistors(): Circuit {
     GND()
   );
   
-  applyToCircuit(circuit, result);
-  return circuit;
+  applyToCircuit(s, result);
+  return s;
 }
 
 // =============================================================================
@@ -87,15 +85,13 @@ export function parallelResistors(): Circuit {
 // Resistor and Capacitor forming a low-pass filter
 // =============================================================================
 
-export function rcLowPassFilter(): Circuit {
-  const circuit = buildCircuit('RC Low-Pass Filter',
+export function rcLowPassFilter(): Schematic {
+  return Circuit('RC Low-Pass Filter',
     AC(5, kHz(1)),
     R(kOhm(1)),
     C(uF(0.1)),
     GND()
   );
-  
-  return circuit;
 }
 
 // =============================================================================
@@ -103,8 +99,8 @@ export function rcLowPassFilter(): Circuit {
 // Inductor and Capacitor in parallel (resonant circuit)
 // =============================================================================
 
-export function lcTankCircuit(): Circuit {
-  const circuit = createCircuit('LC Tank');
+export function lcTankCircuit(): Schematic {
+  const s = createSchematic('LC Tank');
   
   const result = Series(
     DC(12),
@@ -116,16 +112,16 @@ export function lcTankCircuit(): Circuit {
     GND()
   );
   
-  applyToCircuit(circuit, result);
-  return circuit;
+  applyToCircuit(s, result);
+  return s;
 }
 
 // =============================================================================
 // Example 6: Traffic Light (Multiple LEDs)
 // =============================================================================
 
-export function trafficLight(): Circuit {
-  const circuit = createCircuit('Traffic Light');
+export function trafficLight(): Schematic {
+  const s = createSchematic('Traffic Light');
   
   const source = DC(5);
   const ground = GND();
@@ -141,16 +137,16 @@ export function trafficLight(): Circuit {
     ground
   );
   
-  applyToCircuit(circuit, result);
-  return circuit;
+  applyToCircuit(s, result);
+  return s;
 }
 
 // =============================================================================
 // Example 7: Full-Wave Rectifier (4 diodes)
 // =============================================================================
 
-export function fullWaveRectifier(): Circuit {
-  const circuit = createCircuit('Full-Wave Rectifier');
+export function fullWaveRectifier(): Schematic {
+  const s = createSchematic('Full-Wave Rectifier');
   
   // Create diodes
   const d1 = D('1N4007');
@@ -164,42 +160,42 @@ export function fullWaveRectifier(): Circuit {
   const filterCap = C(uF(100));
   const ground = GND();
   
-  circuit.addComponents(source, d1, d2, d3, d4, loadResistor, filterCap, ground);
+  s.addComponents(source, d1, d2, d3, d4, loadResistor, filterCap, ground);
   
   // Manual connections for bridge rectifier
   // This is more complex topology that Series/Parallel can't express directly
-  const acPos = circuit.createNode('AC+');
-  const acNeg = circuit.createNode('AC-');
-  const dcPos = circuit.createNode('DC+');
-  const dcNeg = circuit.createNode('DC-');
+  const acPos = s.createNode('AC+');
+  const acNeg = s.createNode('AC-');
+  const dcPos = s.createNode('DC+');
+  const dcNeg = s.createNode('DC-');
   
   // Connect AC source
-  circuit.connect(source.positive, acPos);
-  circuit.connect(source.negative, acNeg);
+  s.connect(source.positive, acPos);
+  s.connect(source.negative, acNeg);
   
   // Connect diodes in bridge configuration
-  circuit.connect(d1.anode, acPos);
-  circuit.connect(d1.cathode, dcPos);
+  s.connect(d1.anode, acPos);
+  s.connect(d1.cathode, dcPos);
   
-  circuit.connect(d2.anode, dcNeg);
-  circuit.connect(d2.cathode, acPos);
+  s.connect(d2.anode, dcNeg);
+  s.connect(d2.cathode, acPos);
   
-  circuit.connect(d3.anode, acNeg);
-  circuit.connect(d3.cathode, dcPos);
+  s.connect(d3.anode, acNeg);
+  s.connect(d3.cathode, dcPos);
   
-  circuit.connect(d4.anode, dcNeg);
-  circuit.connect(d4.cathode, acNeg);
+  s.connect(d4.anode, dcNeg);
+  s.connect(d4.cathode, acNeg);
   
   // Connect load and filter
-  circuit.connect(loadResistor.p1, dcPos);
-  circuit.connect(loadResistor.p2, dcNeg);
-  circuit.connect(filterCap.p1, dcPos);
-  circuit.connect(filterCap.p2, dcNeg);
+  s.connect(loadResistor.p1, dcPos);
+  s.connect(loadResistor.p2, dcNeg);
+  s.connect(filterCap.p1, dcPos);
+  s.connect(filterCap.p2, dcNeg);
   
   // Ground reference
-  circuit.connect(ground.pin, dcNeg);
+  s.connect(ground.pin, dcNeg);
   
-  return circuit;
+  return s;
 }
 
 // =============================================================================
