@@ -13,7 +13,7 @@ import {
   Diode, D,
   LED, createLED,
   VoltageSource, DC, AC,
-  CurrentSource, I_DC,
+  CurrentSource, IDC,
   Ground, GND,
   RED, GREEN, BLUE,
 } from '../core/components';
@@ -136,7 +136,7 @@ describe('VoltageSource', () => {
 
 describe('CurrentSource', () => {
   it('should create DC current source', () => {
-    const i = I_DC(mA(10));
+    const i = IDC(mA(10));
     expect(i.current).toBe(0.01);
     expect(i.sourceType).toBe(SourceType.DC);
   });
