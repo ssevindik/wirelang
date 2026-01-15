@@ -7,8 +7,9 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "example": "ts-node core/examples.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "example": "node run-examples.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "circuit",
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@types/node": "^25.0.8",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17"
   }
 }
