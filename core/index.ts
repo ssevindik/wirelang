@@ -48,23 +48,44 @@ export {
 // Core Classes
 export { Pin } from './Pin';
 export { Node, createGroundNode } from './Node';
-export { Component, TwoTerminalComponent, PolarizedTwoTerminalComponent } from './Component';
+export { 
+  Component, 
+  TwoTerminalComponent, 
+  PolarizedTwoTerminalComponent,
+  ThreeTerminalComponent,
+  BJTComponent,
+  FETComponent,
+} from './Component';
 export { Schematic, createSchematic, type SchematicValidationResult } from './Schematic';
 
 // Components
 export {
+  // Passive
   Resistor, R,
   Capacitor, C,
   Inductor, L,
+  // Diodes
   Diode, D,
-  LEDComponent, LED, createLED, RED, GREEN, BLUE, YELLOW, WHITE, ORANGE,
+  LEDComponent, LED, createLED, RED, GREEN, BLUE, YELLOW, WHITE, ORANGE, PURPLE, CYAN, PINK, AMBER, IR, UV,
+  // Sources
   VoltageSource, DC, AC,
   CurrentSource, IDC, IAC,
   Ground, GND,
+  // Power Rails
+  PowerRail, VCC, VDD, VPOS, VNEG,
+  // Transistors - BJT
+  NPNTransistor, NPN,
+  PNPTransistor, PNP,
+  // Transistors - MOSFET
+  NMOSTransistor, NMOS,
+  PMOSTransistor, PMOS,
+  // Types
   type DiodeParams,
   type LEDParams,
   type VoltageSourceParams,
   type CurrentSourceParams,
+  type BJTParams,
+  type MOSFETParams,
 } from './components';
 
 // DSL Functions
@@ -78,4 +99,5 @@ export {
   Circuit,
   type ConnectionResult,
   type Connectable,
+  type CircuitOptions,
 } from './dsl';

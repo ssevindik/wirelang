@@ -12,6 +12,7 @@ import {
   DC, GND,
   createLED,
   RED,
+  NPN,
 } from '../core/components';
 import {
   Series,
@@ -217,6 +218,36 @@ describe('DSL Functions', () => {
       applyToCircuit(s, result);
       
       expect(s.components.length).toBe(4); // DC, R1, R2, GND
+    });
+  });
+
+  describe('Array-based Circuit', () => {
+    it('should create circuit with multiple paths', () => {
+      const c = Circuit('Multi-path', [
+        [DC(5), R(100), GND()],
+        [DC(12), R(200), GND()],
+      ]);
+      
+      expect(c.components.length).toBe(6); // 2x DC, 2x R, 2x GND
+    });
+
+    it('should connect transistor pins correctly', () => {
+      const t = NPN('2N2222');
+      
+      const c = Circuit('NPN Switch', [
+        [DC(5), R(330), t.C],   // Collector path
+        [t.E, GND()],           // Emitter path
+        [DC(5), R(kOhm(10)), t.B], // Base bias
+      ]);
+      
+      // 3 paths with transistor pins included
+      // DC, R, LED, NPN(from t.C), GND(from t.E), DC, R, NPN(from t.B) = 6 unique
+      expect(c.components.length).toBe(6); // DC, R, LED, NPN, GND, DC, R
+      
+      // Verify transistor pins are connected
+      expect(t.C.isConnected()).toBe(true);
+      expect(t.E.isConnected()).toBe(true);
+      expect(t.B.isConnected()).toBe(true);
     });
   });
 });
