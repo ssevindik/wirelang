@@ -3,36 +3,42 @@
  */
 
 import { PolarizedTwoTerminalComponent } from '../Component';
-import { ComponentType, LEDColor } from '../types';
+import { ComponentType, Color } from '../types';
 
-// Typical forward voltages by color
-const LED_FORWARD_VOLTAGES: Record<LEDColor, number> = {
-  [LEDColor.Red]: 1.8,
-  [LEDColor.Orange]: 2.0,
-  [LEDColor.Yellow]: 2.1,
-  [LEDColor.Green]: 2.2,
-  [LEDColor.Blue]: 3.2,
-  [LEDColor.White]: 3.2,
+// Typical forward voltages by LED color
+const LED_FORWARD_VOLTAGES: Partial<Record<Color, number>> = {
+  [Color.Red]: 1.8,
+  [Color.Orange]: 2.0,
+  [Color.Yellow]: 2.1,
+  [Color.Green]: 2.2,
+  [Color.Blue]: 3.2,
+  [Color.White]: 3.2,
+  [Color.Purple]: 3.2,
+  [Color.Cyan]: 3.2,
+  [Color.Pink]: 3.0,
+  [Color.Amber]: 2.0,
+  [Color.IR]: 1.2,   // Infrared LED
+  [Color.UV]: 3.5,   // Ultraviolet LED
 };
 
 export interface LEDParams {
-  color?: LEDColor;
+  color?: Color;
   forwardVoltage?: number;
   maxCurrent?: number;  // Typically 20mA
 }
 
-export class LED extends PolarizedTwoTerminalComponent {
-  readonly color: LEDColor;
+export class LEDComponent extends PolarizedTwoTerminalComponent {
+  readonly color: Color;
   readonly forwardVoltage: number;
   readonly maxCurrent: number;
 
-  constructor(params: LEDParams | LEDColor = LEDColor.Red) {
+  constructor(params: LEDParams | Color = Color.Red) {
     const normalized = typeof params === 'string' 
-      ? { color: params } 
+      ? { color: params as Color } 
       : params;
     
-    const color = normalized.color ?? LEDColor.Red;
-    const forwardVoltage = normalized.forwardVoltage ?? LED_FORWARD_VOLTAGES[color];
+    const color = normalized.color ?? Color.Red;
+    const forwardVoltage = normalized.forwardVoltage ?? LED_FORWARD_VOLTAGES[color] ?? 2.0;
     
     super(ComponentType.LED, {
       value: forwardVoltage,
@@ -64,20 +70,29 @@ export class LED extends PolarizedTwoTerminalComponent {
   }
 }
 
-// Re-export colors for convenience
-export { LEDColor };
+// Re-export Color for convenience (aliased as LEDColor for backwards compat)
+export { Color, Color as LEDColor };
 
 /**
- * Factory functions for DSL usage
+ * Factory function for DSL usage
  */
-export function createLED(params?: LEDParams | LEDColor): LED {
-  return new LED(params);
+export function LED(params?: LEDParams | Color): LEDComponent {
+  return new LEDComponent(params);
 }
 
-// Convenience shortcuts
-export const RED = LEDColor.Red;
-export const GREEN = LEDColor.Green;
-export const BLUE = LEDColor.Blue;
-export const YELLOW = LEDColor.Yellow;
-export const WHITE = LEDColor.White;
-export const ORANGE = LEDColor.Orange;
+// Alias for backwards compatibility
+export const createLED = LED;
+
+// Convenience color shortcuts
+export const RED = Color.Red;
+export const GREEN = Color.Green;
+export const BLUE = Color.Blue;
+export const YELLOW = Color.Yellow;
+export const WHITE = Color.White;
+export const ORANGE = Color.Orange;
+export const PURPLE = Color.Purple;
+export const CYAN = Color.Cyan;
+export const PINK = Color.Pink;
+export const AMBER = Color.Amber;
+export const IR = Color.IR;
+export const UV = Color.UV;
