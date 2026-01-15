@@ -76,13 +76,13 @@ export class CurrentSource extends Component {
 /**
  * Factory function for DC current source
  */
-export function I_DC(current: number): CurrentSource {
+export function IDC(current: number): CurrentSource {
   return new CurrentSource({ current, sourceType: SourceType.DC });
 }
 
 /**
  * Factory function for AC current source
  */
-export function I_AC(current: number, frequency: number): CurrentSource {
+export function IAC(current: number, frequency: number): CurrentSource {
   return new CurrentSource({ current, sourceType: SourceType.AC, frequency });
 }
