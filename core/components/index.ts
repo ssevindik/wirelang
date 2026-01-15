@@ -10,5 +10,5 @@ export { Diode, D, type DiodeParams } from './Diode';
 export { LEDComponent, LED, createLED, RED, GREEN, BLUE, YELLOW, WHITE, ORANGE, type LEDParams } from './LED';
 export type { LEDColor } from './LED';
 export { VoltageSource, DC, AC, type VoltageSourceParams } from './VoltageSource';
-export { CurrentSource, I_DC, I_AC, type CurrentSourceParams } from './CurrentSource';
+export { CurrentSource, IDC, IAC, type CurrentSourceParams } from './CurrentSource';
 export { Ground, GND } from './Ground';
