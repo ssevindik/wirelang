@@ -1,4 +1,4 @@
-# circuit-dsl
+# WireLang
 
 A code-first domain-specific language (DSL) for describing electronic circuits.
 
