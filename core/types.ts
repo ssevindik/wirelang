@@ -25,13 +25,22 @@ export enum PinDirection {
   Bidirectional = 'bidirectional',
 }
 
-export enum LEDColor {
+/**
+ * General color enum for components (LEDs, sensors, indicators, etc.)
+ */
+export enum Color {
   Red = 'red',
   Green = 'green',
   Blue = 'blue',
   Yellow = 'yellow',
   White = 'white',
   Orange = 'orange',
+  Purple = 'purple',
+  Cyan = 'cyan',
+  Pink = 'pink',
+  Amber = 'amber',
+  IR = 'infrared',     // Infrared - sensors, IR LEDs
+  UV = 'ultraviolet',  // Ultraviolet - UV LEDs, sensors
 }
 
 export interface ComponentParams {
