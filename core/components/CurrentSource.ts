@@ -49,6 +49,20 @@ export class CurrentSource extends Component {
     return this.pins[1];
   }
 
+  /**
+   * Override p1 to be negative (input) for correct series flow
+   */
+  get p1(): Pin {
+    return this.negative;
+  }
+
+  /**
+   * Override p2 to be positive (output) for correct series flow
+   */
+  get p2(): Pin {
+    return this.positive;
+  }
+
   validate(): string[] {
     const errors = super.validate();
     

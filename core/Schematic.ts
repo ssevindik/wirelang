@@ -7,6 +7,7 @@
 import { Component } from './Component';
 import { Node, createGroundNode } from './Node';
 import { Pin } from './Pin';
+import { ComponentType } from './types';
 
 export interface SchematicValidationResult {
   valid: boolean;
@@ -207,19 +208,121 @@ export class Schematic {
     ];
 
     for (const component of this._components) {
-      lines.push(`  ${component.toString()}`);
+      lines.push(`  ${component.label}: ${component.toString()}`);
     }
 
-    lines.push('', 'Topology:');
+    lines.push('', 'Connections:');
     for (const node of this._nodes) {
       const pins = this.getPinsAtNode(node);
       if (pins.length > 0) {
-        const pinNames = pins.map(p => p.name).join(', ');
-        lines.push(`  ${node.toString()}: [${pinNames}]`);
+        const pinNames = pins.map(p => p.fullName).join(' ── ');
+        lines.push(`  ${pinNames}`);
       }
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * Auto-connect unconnected negative pins of voltage/current sources to ground
+   * This handles the common case where DC/AC sources share a common ground
+   * 
+   * @returns Object with connected pins and any warnings
+   */
+  autoConnectGrounds(): { connected: Pin[]; warnings: string[] } {
+    const connected: Pin[] = [];
+    const warnings: string[] = [];
+
+    // First, merge all GND components to a single node
+    this.mergeGrounds();
+
+    // Find all Ground components in the circuit
+    const groundComponents = this._components.filter(c => c.type === ComponentType.Ground);
+    
+    if (groundComponents.length === 0) {
+      warnings.push('No GND component found - cannot auto-connect source negatives');
+      return { connected, warnings };
+    }
+
+    // Get the ground node (from first Ground component's pin)
+    const gndComponent = groundComponents[0];
+    const gndPin = gndComponent.pins[0];
+    
+    if (!gndPin.isConnected()) {
+      warnings.push('GND component is not connected to any node');
+      return { connected, warnings };
+    }
+
+    const gndNode = gndPin.node!;
+
+    // Find voltage and current sources with unconnected negative pins
+    const sources = this._components.filter(c => 
+      c.type === ComponentType.VoltageSource || c.type === ComponentType.CurrentSource
+    );
+
+    for (const source of sources) {
+      // Find the negative pin
+      const negativePin = source.pins.find(p => p.name === 'negative');
+      
+      if (negativePin && !negativePin.isConnected()) {
+        // Connect to ground node
+        negativePin.connectTo(gndNode);
+        connected.push(negativePin);
+      }
+    }
+
+    return { connected, warnings };
+  }
+
+  /**
+   * Merge all GND components to share a single ground node
+   * This ensures all grounds in the circuit are at the same potential
+   */
+  mergeGrounds(): void {
+    const groundComponents = this._components.filter(c => c.type === ComponentType.Ground);
+    
+    if (groundComponents.length <= 1) {
+      return; // Nothing to merge
+    }
+
+    // Use the first GND's node as the master ground node
+    const masterGnd = groundComponents[0];
+    const masterPin = masterGnd.pins[0];
+    
+    if (!masterPin.isConnected()) {
+      return; // Master GND not connected yet
+    }
+
+    const masterNode = masterPin.node!;
+
+    // Merge all other GND nodes into master
+    for (let i = 1; i < groundComponents.length; i++) {
+      const gndComponent = groundComponents[i];
+      const gndPin = gndComponent.pins[0];
+      
+      if (gndPin.isConnected()) {
+        const oldNode = gndPin.node!;
+        
+        // Move all pins from old node to master node
+        for (const component of this._components) {
+          for (const pin of component.pins) {
+            if (pin.isConnectedTo(oldNode)) {
+              pin.disconnect();
+              pin.connectTo(masterNode);
+            }
+          }
+        }
+        
+        // Remove the old node from the circuit
+        const nodeIndex = this._nodes.indexOf(oldNode);
+        if (nodeIndex > -1) {
+          this._nodes.splice(nodeIndex, 1);
+        }
+      } else {
+        // GND not connected - connect it to master
+        gndPin.connectTo(masterNode);
+      }
+    }
   }
 
   toString(): string {
