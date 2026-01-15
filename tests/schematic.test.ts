@@ -1,9 +1,9 @@
 /**
- * Circuit and DSL Tests
+ * Schematic and DSL Tests
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Circuit, createCircuit } from '../core/Circuit';
+import { Schematic, createSchematic } from '../core/Schematic';
 import { Component } from '../core/Component';
 import { Pin } from '../core/Pin';
 import { Node } from '../core/Node';
@@ -19,91 +19,91 @@ import {
   wire,
   junction,
   applyToCircuit,
-  buildCircuit,
+  Circuit,
 } from '../core/dsl';
 import { kOhm, uF } from '../core/units';
 
-describe('Circuit', () => {
+describe('Schematic', () => {
   beforeEach(() => {
     Component.resetCounter();
     Pin.resetCounter();
     Node.resetCounter();
   });
 
-  it('should create empty circuit', () => {
-    const circuit = createCircuit('test');
-    expect(circuit.name).toBe('test');
-    expect(circuit.components.length).toBe(0);
-    expect(circuit.nodes.length).toBe(0);
+  it('should create empty schematic', () => {
+    const s = createSchematic('test');
+    expect(s.name).toBe('test');
+    expect(s.components.length).toBe(0);
+    expect(s.nodes.length).toBe(0);
   });
 
   it('should add components', () => {
-    const circuit = createCircuit('test');
+    const s = createSchematic('test');
     const r1 = R(100);
     const r2 = R(200);
     
-    circuit.addComponent(r1);
-    circuit.addComponents(r2);
+    s.addComponent(r1);
+    s.addComponents(r2);
     
-    expect(circuit.components.length).toBe(2);
+    expect(s.components.length).toBe(2);
   });
 
   it('should create and add nodes', () => {
-    const circuit = createCircuit('test');
-    const node = circuit.createNode('VCC');
+    const s = createSchematic('test');
+    const node = s.createNode('VCC');
     
-    expect(circuit.nodes.length).toBe(1);
+    expect(s.nodes.length).toBe(1);
     expect(node.name).toBe('VCC');
   });
 
   it('should connect pins to nodes', () => {
-    const circuit = createCircuit('test');
+    const s = createSchematic('test');
     const r = R(100);
-    const node = circuit.createNode('net1');
+    const node = s.createNode('net1');
     
-    circuit.addComponent(r);
-    circuit.connect(r.p1, node);
+    s.addComponent(r);
+    s.connect(r.p1, node);
     
     expect(r.p1.isConnectedTo(node)).toBe(true);
   });
 
   it('should get ground node', () => {
-    const circuit = createCircuit('test');
-    const gnd = circuit.groundNode;
+    const s = createSchematic('test');
+    const gnd = s.groundNode;
     
     expect(gnd.isGround()).toBe(true);
-    expect(circuit.nodes).toContain(gnd);
+    expect(s.nodes).toContain(gnd);
   });
 
   it('should find unconnected pins', () => {
-    const circuit = createCircuit('test');
+    const s = createSchematic('test');
     const r = R(100);
-    circuit.addComponent(r);
+    s.addComponent(r);
     
-    const unconnected = circuit.getUnconnectedPins();
+    const unconnected = s.getUnconnectedPins();
     expect(unconnected.length).toBe(2);
   });
 
   it('should find pins at node', () => {
-    const circuit = createCircuit('test');
+    const s = createSchematic('test');
     const r1 = R(100);
     const r2 = R(200);
-    const node = circuit.createNode('net1');
+    const node = s.createNode('net1');
     
-    circuit.addComponents(r1, r2);
-    circuit.connect(r1.p2, node);
-    circuit.connect(r2.p1, node);
+    s.addComponents(r1, r2);
+    s.connect(r1.p2, node);
+    s.connect(r2.p1, node);
     
-    const pins = circuit.getPinsAtNode(node);
+    const pins = s.getPinsAtNode(node);
     expect(pins.length).toBe(2);
   });
 
   it('should validate circuit', () => {
-    const circuit = createCircuit('test');
+    const s = createSchematic('test');
     const r = R(100);
-    circuit.addComponent(r);
+    s.addComponent(r);
     
-    const result = circuit.validate();
+    const result = s.validate();
     expect(result.warnings.length).toBeGreaterThan(0); // Unconnected pins
   });
 });
@@ -187,23 +187,23 @@ describe('DSL Functions', () => {
     });
   });
 
-  describe('buildCircuit', () => {
+  describe('Circuit', () => {
     it('should create complete circuit', () => {
-      const circuit = buildCircuit('LED Circuit',
+      const c = Circuit('LED Circuit',
         DC(5),
         R(330),
         createLED(RED),
         GND()
       );
       
-      expect(circuit.name).toBe('LED Circuit');
-      expect(circuit.components.length).toBe(4);
+      expect(c.name).toBe('LED Circuit');
+      expect(c.components.length).toBe(4);
     });
   });
 
   describe('Nested Series/Parallel', () => {
     it('should handle nested connections', () => {
-      const circuit = createCircuit('Nested');
+      const s = createSchematic('Nested');
       
       const result = Series(
         DC(9),
@@ -214,9 +214,9 @@ describe('DSL Functions', () => {
         GND()
       );
       
-      applyToCircuit(circuit, result);
+      applyToCircuit(s, result);
       
-      expect(circuit.components.length).toBe(4); // DC, R1, R2, GND
+      expect(s.components.length).toBe(4); // DC, R1, R2, GND
     });
   });
 });
@@ -229,32 +229,32 @@ describe('Circuit Validation', () => {
   });
 
   it('should validate complete circuit', () => {
-    const circuit = buildCircuit('Valid',
+    const c = Circuit('Valid',
       DC(5),
       R(330),
       createLED(RED),
       GND()
     );
     
-    const result = circuit.validate();
+    const result = c.validate();
     // LED circuit should be mostly valid
     expect(result.errors.length).toBe(0);
   });
 
   it('should warn about missing ground', () => {
-    const circuit = createCircuit('No Ground');
-    circuit.addComponent(R(100));
-    circuit.addComponent(DC(5));
+    const s = createSchematic('No Ground');
+    s.addComponent(R(100));
+    s.addComponent(DC(5));
     
-    const result = circuit.validate();
+    const result = s.validate();
     expect(result.warnings.some(w => w.includes('ground'))).toBe(true);
   });
 
   it('should report component validation errors', () => {
-    const circuit = createCircuit('Invalid');
-    circuit.addComponent(R(0)); // Zero resistance
+    const s = createSchematic('Invalid');
+    s.addComponent(R(0)); // Zero resistance
     
-    const result = circuit.validate();
+    const result = s.validate();
     expect(result.errors.length).toBeGreaterThan(0);
   });
 });
