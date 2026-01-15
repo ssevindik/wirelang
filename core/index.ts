@@ -49,7 +49,7 @@ export {
 export { Pin } from './Pin';
 export { Node, createGroundNode } from './Node';
 export { Component, TwoTerminalComponent, PolarizedTwoTerminalComponent } from './Component';
-export { Circuit, createCircuit, type CircuitValidationResult } from './Circuit';
+export { Schematic, createSchematic, type SchematicValidationResult } from './Schematic';
 
 // Components
 export {
@@ -75,7 +75,7 @@ export {
   wire,
   junction,
   applyToCircuit,
-  buildCircuit,
+  Circuit,
   type ConnectionResult,
   type Connectable,
 } from './dsl';
