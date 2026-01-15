@@ -12,6 +12,14 @@ export enum ComponentType {
   VoltageSource = 'voltage_source',
   CurrentSource = 'current_source',
   Ground = 'ground',
+  PowerRail = 'power_rail',  // VCC, VDD, etc.
+  // Transistors
+  NPN = 'npn',
+  PNP = 'pnp',
+  NMOS = 'nmos',
+  PMOS = 'pmos',
+  NJFET = 'njfet',
+  PJFET = 'pjfet',
 }
 
 export enum SourceType {
