@@ -7,7 +7,7 @@
 import { Component } from './Component';
 import { Node } from './Node';
 import { Pin } from './Pin';
-import { Circuit } from './Circuit';
+import { Schematic } from './Schematic';
 
 /**
  * Result of a DSL connection operation
@@ -143,8 +143,8 @@ export function Parallel(...items: Connectable[]): ConnectionResult {
 /**
  * Connect a pin directly to ground
  */
-export function toGround(pin: Pin, circuit: Circuit): void {
-  pin.connectTo(circuit.groundNode);
+export function toGround(pin: Pin, schematic: Schematic): void {
+  pin.connectTo(schematic.groundNode);
 }
 
 /**
@@ -173,25 +173,25 @@ export function junction(...pins: Pin[]): Node {
 }
 
 /**
- * Apply a connection result to a circuit
- * Adds all components and nodes from the result to the circuit
+ * Apply a connection result to a schematic
+ * Adds all components and nodes from the result to the schematic
  */
-export function applyToCircuit(circuit: Circuit, result: ConnectionResult): Circuit {
+export function applyToCircuit(schematic: Schematic, result: ConnectionResult): Schematic {
   for (const component of result.components) {
-    circuit.addComponent(component);
+    schematic.addComponent(component);
   }
   for (const node of result.nodes) {
-    circuit.addNode(node);
+    schematic.addNode(node);
   }
-  return circuit;
+  return schematic;
 }
 
 /**
  * Create a complete circuit from a series/parallel connection
- * Convenience function that creates a circuit and applies connections
+ * Convenience function that creates a schematic and applies connections
  */
-export function buildCircuit(name: string, ...items: Connectable[]): Circuit {
-  const circuit = new Circuit(name);
+export function Circuit(name: string, ...items: Connectable[]): Schematic {
+  const s = new Schematic(name);
   const result = Series(...items);
-  return applyToCircuit(circuit, result);
+  return applyToCircuit(s, result);
 }
