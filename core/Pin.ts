@@ -8,16 +8,34 @@ import { Node } from './Node';
 
 let pinCounter = 0;
 
+// Forward declaration to avoid circular dependency
+type ComponentRef = { id: string; type: string };
+
 export class Pin {
   readonly id: PinId;
   readonly name: string;
   readonly direction?: PinDirection;
   private _node: Node | null = null;
+  private _component: ComponentRef | null = null;
 
   constructor(name: string, direction?: PinDirection) {
     this.id = `pin_${++pinCounter}`;
     this.name = name;
     this.direction = direction;
+  }
+
+  /**
+   * Set the component that owns this pin (called by Component constructor)
+   */
+  setComponent(component: ComponentRef): void {
+    this._component = component;
+  }
+
+  /**
+   * Get the component that owns this pin
+   */
+  get component(): ComponentRef | null {
+    return this._component;
   }
 
   /**
@@ -55,9 +73,20 @@ export class Pin {
     return this._node === node;
   }
 
+  /**
+   * Get a short label for this pin including component name
+   * e.g., "R1.1", "Q1.C", "LED1.anode"
+   */
+  get fullName(): string {
+    if (this._component && 'label' in this._component) {
+      return `${this._component.label}.${this.name}`;
+    }
+    return this.name;
+  }
+
   toString(): string {
     const nodeStr = this._node ? ` -> ${this._node.toString()}` : ' (unconnected)';
-    return `Pin(${this.name})${nodeStr}`;
+    return `${this.fullName}${nodeStr}`;
   }
 
   /**
