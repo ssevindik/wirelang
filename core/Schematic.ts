@@ -1,20 +1,20 @@
 /**
- * WireLang Core - Circuit
+ * WireLang Core - Schematic
  * Container for components and nodes
- * The Circuit IS the IR (Intermediate Representation) in v1
+ * The Schematic IS the IR (Intermediate Representation) in v1
  */
 
 import { Component } from './Component';
 import { Node, createGroundNode } from './Node';
 import { Pin } from './Pin';
 
-export interface CircuitValidationResult {
+export interface SchematicValidationResult {
   valid: boolean;
   errors: string[];
   warnings: string[];
 }
 
-export class Circuit {
+export class Schematic {
   readonly name: string;
   private _components: Component[] = [];
   private _nodes: Node[] = [];
@@ -149,7 +149,7 @@ export class Circuit {
   /**
    * Validate the circuit topology and component values
    */
-  validate(): CircuitValidationResult {
+  validate(): SchematicValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -223,13 +223,13 @@ export class Circuit {
   }
 
   toString(): string {
-    return `Circuit(${this.name}, ${this._components.length} components, ${this._nodes.length} nodes)`;
+    return `Schematic(${this.name}, ${this._components.length} components, ${this._nodes.length} nodes)`;
   }
 }
 
 /**
- * Factory function for creating a new circuit
+ * Factory function for creating a new schematic
  */
-export function createCircuit(name?: string): Circuit {
-  return new Circuit(name);
+export function createSchematic(name?: string): Schematic {
+  return new Schematic(name);
 }
