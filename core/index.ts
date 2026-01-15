@@ -14,7 +14,8 @@ export {
   ComponentType,
   SourceType,
   PinDirection,
-  LEDColor,
+  Color,
+  Color as LEDColor,  // Backwards compatibility alias
   type ComponentParams,
   type NodeId,
   type ComponentId,
@@ -56,7 +57,7 @@ export {
   Capacitor, C,
   Inductor, L,
   Diode, D,
-  LED, createLED, RED, GREEN, BLUE, YELLOW, WHITE, ORANGE,
+  LEDComponent, LED, createLED, RED, GREEN, BLUE, YELLOW, WHITE, ORANGE,
   VoltageSource, DC, AC,
   CurrentSource, I_DC, I_AC,
   Ground, GND,
