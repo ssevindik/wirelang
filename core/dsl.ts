@@ -246,11 +246,26 @@ function connectPath(path: Path): { components: Component[]; nodes: Node[] } {
     // Get the input pin of next item
     const inPin = getInputPin(next);
     
-    // Connect them via a new node
-    const node = new Node();
-    nodes.push(node);
-    outPin.connectTo(node);
-    inPin.connectTo(node);
+    // If either pin already has a node, use that node
+    // Otherwise create a new one
+    let node: Node;
+    
+    if (outPin.isConnected() && outPin.node) {
+      node = outPin.node;
+    } else if (inPin.isConnected() && inPin.node) {
+      node = inPin.node;
+    } else {
+      node = new Node();
+      nodes.push(node);
+    }
+    
+    // Connect both pins to the node (connectTo handles already-connected case)
+    if (!outPin.isConnectedTo(node)) {
+      outPin.connectTo(node);
+    }
+    if (!inPin.isConnectedTo(node)) {
+      inPin.connectTo(node);
+    }
   }
 
   return { components, nodes };
