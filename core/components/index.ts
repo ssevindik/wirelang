@@ -28,4 +28,13 @@ export { NPNTransistor, NPN, PNPTransistor, PNP, type BJTParams } from './BJT';
 export { NMOSTransistor, NMOS, PMOSTransistor, PMOS, type MOSFETParams } from './MOSFET';
 
 // Analog ICs
-export { OpAmpComponent, OpAmp, LM741, TL072, NE5532, LM358, type OpAmpParams } from './OpAmp';
+export { OpAmpComponent, OpAmp3Component, OpAmp, OpAmp3, LM741, TL072, NE5532, LM358, type OpAmpParams } from './OpAmp';
+
+// Logic Gates
+export {
+  NOTGate, ANDGate, ORGate, XORGate, NANDGate, NORGate,
+  NOT, AND, OR, XOR, NAND, NOR,
+  LogicHigh, LogicLow, HIGH, LOW,
+  ClockSource, CLK,
+  type GateType,
+} from './LogicGate';
