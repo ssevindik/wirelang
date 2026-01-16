@@ -193,7 +193,7 @@ export function fullWaveRectifier(): Schematic {
   s.connect(filterCap.p2, dcNeg);
   
   // Ground reference
-  s.connect(ground.pin, dcNeg);
+  s.connect(ground.gnd, dcNeg);
   
   return s;
 }
