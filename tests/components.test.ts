@@ -15,6 +15,7 @@ import {
   VoltageSource, DC, AC,
   CurrentSource, IDC,
   Ground, GND,
+  OpAmpComponent, OpAmp, LM741, TL072, NE5532, LM358,
   RED, GREEN, BLUE,
 } from '../core/components';
 import { kOhm, uF, mH, mA } from '../core/units';
@@ -158,5 +159,126 @@ describe('Ground', () => {
     const gnd = GND();
     const node = gnd.getGroundNode();
     expect(node.isGround()).toBe(true);
+  });
+});
+
+describe('OpAmp', () => {
+  beforeEach(() => {
+    Component.resetCounter();
+    Pin.resetCounter();
+  });
+
+  it('should create 5-pin OpAmp with default values', () => {
+    const op = OpAmp();
+    expect(op.type).toBe('opamp');
+    expect(op.pins.length).toBe(5);
+    expect(op.partNumber).toBe('Generic');
+    expect(op.gain).toBe(100000);
+  });
+
+  it('should create OpAmp with part number string', () => {
+    const op = OpAmp('LM741');
+    expect(op.partNumber).toBe('LM741');
+    expect(op.toString()).toBe('OpAmp(LM741)');
+  });
+
+  it('should create OpAmp with params object', () => {
+    const op = new OpAmpComponent({ partNumber: 'TL072', gain: 200000 });
+    expect(op.partNumber).toBe('TL072');
+    expect(op.gain).toBe(200000);
+  });
+
+  it('should have correct pin names', () => {
+    const op = OpAmp('NE5532');
+    expect(op.inP.name).toBe('inP');
+    expect(op.inN.name).toBe('inN');
+    expect(op.out.name).toBe('out');
+    expect(op.vPos.name).toBe('vPos');
+    expect(op.vNeg.name).toBe('vNeg');
+  });
+
+  it('should have correct pin accessors', () => {
+    const op = OpAmp();
+    expect(op.inP).toBe(op.pins[0]);
+    expect(op.inN).toBe(op.pins[1]);
+    expect(op.out).toBe(op.pins[2]);
+    expect(op.vPos).toBe(op.pins[3]);
+    expect(op.vNeg).toBe(op.pins[4]);
+  });
+
+  it('should have U prefix for label', () => {
+    const op = OpAmp();
+    expect(op.label).toMatch(/^U\d+$/);
+  });
+
+  it('should increment label counter', () => {
+    const op1 = OpAmp();
+    const op2 = OpAmp();
+    expect(op1.label).toBe('U1');
+    expect(op2.label).toBe('U2');
+  });
+
+  it('should have p1 as inP and p2 as out for series connection', () => {
+    const op = OpAmp();
+    expect(op.p1).toBe(op.inP);
+    expect(op.p2).toBe(op.out);
+  });
+
+  it('should validate positive gain', () => {
+    const op = new OpAmpComponent({ gain: 0 });
+    const errors = op.validate();
+    expect(errors.length).toBe(1);
+    expect(errors[0]).toContain('Gain must be positive');
+  });
+
+  it('should validate successfully with default gain', () => {
+    const op = OpAmp();
+    const errors = op.validate();
+    expect(errors.length).toBe(0);
+  });
+
+  // Preset tests
+  it('preset LM741 should create correct OpAmp', () => {
+    const op = LM741();
+    expect(op.partNumber).toBe('LM741');
+  });
+
+  it('preset TL072 should create correct OpAmp', () => {
+    const op = TL072();
+    expect(op.partNumber).toBe('TL072');
+  });
+
+  it('preset NE5532 should create correct OpAmp', () => {
+    const op = NE5532();
+    expect(op.partNumber).toBe('NE5532');
+  });
+
+  it('preset LM358 should create correct OpAmp', () => {
+    const op = LM358();
+    expect(op.partNumber).toBe('LM358');
+  });
+
+  // Connection tests
+  it('should connect pins to nodes', () => {
+    const op = OpAmp();
+    const node = new Node('test');
+    op.inP.connectTo(node);
+    expect(op.inP.isConnected()).toBe(true);
+    expect(op.inP.node).toBe(node);
+  });
+
+  it('should support multiple pin connections', () => {
+    const op = OpAmp();
+    const vccNode = new Node('vcc');
+    const veeNode = new Node('vee');
+    const gndNode = new Node('gnd');
+    
+    op.vPos.connectTo(vccNode);
+    op.vNeg.connectTo(veeNode);
+    op.inP.connectTo(gndNode);
+    
+    expect(op.vPos.isConnectedTo(vccNode)).toBe(true);
+    expect(op.vNeg.isConnectedTo(veeNode)).toBe(true);
+    expect(op.inP.isConnectedTo(gndNode)).toBe(true);
   });
 });
