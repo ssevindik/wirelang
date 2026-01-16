@@ -55,6 +55,7 @@ export {
   ThreeTerminalComponent,
   BJTComponent,
   FETComponent,
+  resetCounters,  // For testing
 } from './Component';
 export { Schematic, createSchematic, type SchematicValidationResult } from './Schematic';
 
@@ -80,7 +81,12 @@ export {
   NMOSTransistor, NMOS,
   PMOSTransistor, PMOS,
   // Analog ICs
-  OpAmpComponent, OpAmp, LM741, TL072, NE5532, LM358,
+  OpAmpComponent, OpAmp3Component, OpAmp, OpAmp3, LM741, TL072, NE5532, LM358,
+  // Logic Gates
+  NOTGate, ANDGate, ORGate, XORGate, NANDGate, NORGate,
+  NOT, AND, OR, XOR, NAND, NOR,
+  LogicHigh, LogicLow, HIGH, LOW,
+  ClockSource, CLK,
   // Types
   type DiodeParams,
   type LEDParams,
@@ -89,6 +95,7 @@ export {
   type BJTParams,
   type MOSFETParams,
   type OpAmpParams,
+  type GateType,
 } from './components';
 
 // DSL Functions
