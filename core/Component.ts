@@ -9,6 +9,16 @@ import { Pin } from './Pin';
 let componentCounter = 0;
 const typeCounters: Record<string, number> = {};
 
+/**
+ * Reset all component counters (useful for testing)
+ */
+export function resetCounters(): void {
+  componentCounter = 0;
+  for (const key in typeCounters) {
+    delete typeCounters[key];
+  }
+}
+
 export abstract class Component {
   readonly id: ComponentId;
   readonly type: ComponentType;
@@ -25,7 +35,8 @@ export abstract class Component {
     if (label) {
       this.label = label;
     } else {
-      const prefix = this.getTypePrefix();
+      // Check if params has a labelPrefix hint
+      const prefix = (params as any).labelPrefix ?? this.getTypePrefix();
       typeCounters[prefix] = (typeCounters[prefix] || 0) + 1;
       this.label = `${prefix}${typeCounters[prefix]}`;
     }
@@ -72,6 +83,17 @@ export abstract class Component {
    */
   getPin(name: string): Pin | undefined {
     return this.pins.find(p => p.name === name);
+  }
+
+  /**
+   * Get a pin by name (alias for getPin)
+   */
+  pin(name: string): Pin {
+    const p = this.getPin(name);
+    if (!p) {
+      throw new Error(`Pin "${name}" not found on component ${this.label}`);
+    }
+    return p;
   }
 
   /**
