@@ -79,6 +79,8 @@ export {
   // Transistors - MOSFET
   NMOSTransistor, NMOS,
   PMOSTransistor, PMOS,
+  // Analog ICs
+  OpAmpComponent, OpAmp, LM741, TL072, NE5532, LM358,
   // Types
   type DiodeParams,
   type LEDParams,
@@ -86,6 +88,7 @@ export {
   type CurrentSourceParams,
   type BJTParams,
   type MOSFETParams,
+  type OpAmpParams,
 } from './components';
 
 // DSL Functions
