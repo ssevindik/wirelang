@@ -25,7 +25,7 @@ export class Ground extends Component {
   /**
    * Get the single ground pin
    */
-  get pin(): Pin {
+  get gnd(): Pin {
     return this.pins[0];
   }
 
@@ -35,7 +35,7 @@ export class Ground extends Component {
   getGroundNode(): Node {
     if (!this._groundNode) {
       this._groundNode = createGroundNode();
-      this.pin.connectTo(this._groundNode);
+      this.gnd.connectTo(this._groundNode);
     }
     return this._groundNode;
   }
