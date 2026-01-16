@@ -3,9 +3,6 @@
 A code-first domain-specific language (DSL) for describing electronic circuits.
 
 This project focuses on:
-- Readable circuit definitions
-- Clear connectivity semantics
-- Separation of circuit logic from UI and simulation
 
 ## Status
 ⚠️ Early experimental stage.
@@ -25,3 +22,12 @@ circuit = Series(
   Resistor(330),
   GND()
 )
+
+## Documentation
+
+The full documentation is available under the `docs/` folder. Start at the HOME page:
+
+- `docs/HOME.md` — consolidated home page with links to component reference, API, and examples.
+- `DOCUMENTATION.md` — (removed) single-file overview was deprecated; see `docs/HOME.md`.
+
+For detailed usage and examples see `docs/HOME.md`.
