@@ -15,10 +15,13 @@ No simulation or PCB support yet.
 ```ts
 mcu = MCU("ATmega8")
 
-circuit = Series(
+circuit = Series([
   DC(5),
   mcu.PB5,
   LED(RED),
+])
+```
+
   # WireLang
 
   A small code-first DSL for describing electronic circuits in TypeScript.
@@ -45,7 +48,7 @@ circuit = Series(
 
   The canonical documentation lives in the `docs/` folder. Start at the HOME page:
 
-  - `docs/HOME.md` — consolidated home page with a feature table and links to detailed pages (components, API, examples).
+  - [Home](docs/HOME.md) — consolidated home page with a feature table and links to detailed pages (components, API, examples).
 
   Examples & usage
   -----------------
