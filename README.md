@@ -19,15 +19,49 @@ circuit = Series(
   DC(5),
   mcu.PB5,
   LED(RED),
-  Resistor(330),
-  GND()
-)
+  # WireLang
 
-## Documentation
+  A small code-first DSL for describing electronic circuits in TypeScript.
 
-The full documentation is available under the `docs/` folder. Start at the HOME page:
+  Status
+  ------
 
-- `docs/HOME.md` — consolidated home page with links to component reference, API, and examples.
-- `DOCUMENTATION.md` — (removed) single-file overview was deprecated; see `docs/HOME.md`.
+  Experimental — core DSL and graph model are under active development. There is no simulator or PCB export yet.
 
-For detailed usage and examples see `docs/HOME.md`.
+  Quick start
+  -----------
+
+  Install dependencies, build, run examples and tests:
+
+  ```bash
+  npm install
+  npm run build
+  npm run example
+  npm run test
+  ```
+
+  Documentation
+  -------------
+
+  The canonical documentation lives in the `docs/` folder. Start at the HOME page:
+
+  - `docs/HOME.md` — consolidated home page with a feature table and links to detailed pages (components, API, examples).
+
+  Examples & usage
+  -----------------
+
+  - See `playground.ts` and `core/examples.ts` for runnable examples (LED circuits, op-amp examples, logic gate samples, rectifiers).
+  - Run `npm run example` to execute and print summaries for the included examples.
+
+  Contributing
+  ------------
+
+  - Add new components under `core/components` and export them from `core/components/index.ts`.
+  - Keep examples in `core/examples.ts` or add new example functions and register them in `run-examples.js`.
+
+  Contact
+  -------
+
+  Project repository: https://github.com/ssevindik/wirelang
+
+  For more details and the full API reference open: `docs/HOME.md`.
