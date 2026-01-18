@@ -1,6 +1,6 @@
 {
   "name": "wirelang",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha",
   "description": "A code-first DSL for describing electronic circuits",
   "main": "dist/core/index.js",
   "types": "dist/core/index.d.ts",
