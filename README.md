@@ -15,11 +15,11 @@ No simulation or PCB support yet.
 ```ts
 mcu = MCU("ATmega8")
 
-circuit = Series([
+circuit = Series(
   DC(5),
   mcu.PB5,
   LED(RED),
-])
+)
 ```
 
   # WireLang
