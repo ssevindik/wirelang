@@ -22,15 +22,6 @@ circuit = Series(
 )
 ```
 
-  # WireLang
-
-  A small code-first DSL for describing electronic circuits in TypeScript.
-
-  Status
-  ------
-
-  Experimental — core DSL and graph model are under active development. There is no simulator or PCB export yet.
-
   Quick start
   -----------
 
