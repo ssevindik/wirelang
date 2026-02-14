@@ -199,6 +199,66 @@ export function fullWaveRectifier(): Schematic {
 }
 
 // =============================================================================
+// Example 8: Simple Resistor in Series
+// Minimal circuit for UI2DSL demo - just resistors
+// =============================================================================
+
+export function simpleResistorCircuit(): Schematic {
+  return Circuit('Simple Resistors',
+    DC(5),
+    R(1000),
+    R(2200),
+    GND()
+  );
+}
+
+// =============================================================================
+// Example 9: RC Filter (for UI demo)
+// Classic RC low-pass filter optimized for UI visualization
+// =============================================================================
+
+export function rcFilterDemo(): Schematic {
+  return Circuit('RC Filter',
+    DC(5),
+    R(kOhm(10)),
+    C(uF(1)),
+    GND()
+  );
+}
+
+// =============================================================================
+// Example 10: RL Circuit (for UI demo)
+// Simple RL circuit for inductance demonstration
+// =============================================================================
+
+export function rlCircuitDemo(): Schematic {
+  return Circuit('RL Circuit',
+    DC(12),
+    R(kOhm(1)),
+    L(mH(100)),
+    GND()
+  );
+}
+
+// =============================================================================
+// Example 11: Parallel RC Network
+// Resistor and capacitor in parallel configuration
+// =============================================================================
+
+export function parallelRCDemo(): Schematic {
+  const source = DC(5);
+  const r = R(kOhm(10));
+  const c = C(uF(10));
+  const ground = GND();
+
+  return Circuit('Parallel RC',
+    source,
+    Parallel(r, c),
+    ground
+  );
+}
+
+// =============================================================================
 // Run examples and print summaries
 // =============================================================================
 
