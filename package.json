@@ -4,6 +4,9 @@
   "description": "A code-first DSL for describing electronic circuits",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "wirelang": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "watch": "tsc --watch",
