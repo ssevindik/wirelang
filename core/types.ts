@@ -13,13 +13,21 @@ export enum ComponentType {
   CurrentSource = 'current_source',
   Ground = 'ground',
   PowerRail = 'power_rail',  // VCC, VDD, etc.
-  // Transistors
+  // Transistors - BJT
+  BJT = 'bjt',
   NPN = 'npn',
   PNP = 'pnp',
+  // Transistors - MOSFET
+  MOSFET = 'mosfet',
   NMOS = 'nmos',
   PMOS = 'pmos',
+  // Transistors - JFET
   NJFET = 'njfet',
   PJFET = 'pjfet',
+  // Integrated Circuits
+  OpAmp = 'opamp',
+  // Logic Gates
+  LogicGate = 'logic_gate',
 }
 
 export enum SourceType {

@@ -42,10 +42,11 @@ export class NPNTransistor extends BJTComponent {
     const model = normalized.model ?? 'generic';
     const defaults = BJT_MODELS[model] ?? BJT_MODELS['generic'];
 
-    super(ComponentType.NPN, {
+    super(ComponentType.BJT, {
       value: normalized.hfe ?? defaults.hfe,
       unit: 'hfe',
       model,
+      transistorType: 'NPN',
     });
 
     this.model = model;
@@ -83,10 +84,11 @@ export class PNPTransistor extends BJTComponent {
     const model = normalized.model ?? 'generic';
     const defaults = BJT_MODELS[model] ?? BJT_MODELS['generic'];
 
-    super(ComponentType.PNP, {
+    super(ComponentType.BJT, {
       value: normalized.hfe ?? defaults.hfe,
       unit: 'hfe',
       model,
+      transistorType: 'PNP',
     });
 
     this.model = model;

@@ -24,7 +24,7 @@ abstract class LogicGate extends Component {
   readonly family: string;  // e.g., '74HC', '74LS', 'CD4000'
 
   constructor(gateType: GateType, inputCount: number, family: string = '74HC') {
-    super('logic_gate' as ComponentType, {
+    super(ComponentType.LogicGate, {
       value: inputCount,
       unit: 'inputs',
       gateType,

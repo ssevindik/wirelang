@@ -42,10 +42,11 @@ export class NMOSTransistor extends FETComponent {
     const model = normalized.model ?? 'generic';
     const defaults = MOSFET_MODELS[model] ?? MOSFET_MODELS['generic'];
 
-    super(ComponentType.NMOS, {
+    super(ComponentType.MOSFET, {
       value: normalized.vth ?? defaults.vth,
       unit: 'V',
       model,
+      transistorType: 'NMOS',
     });
 
     this.model = model;
@@ -87,10 +88,11 @@ export class PMOSTransistor extends FETComponent {
     const model = normalized.model ?? 'generic';
     const defaults = MOSFET_MODELS[model] ?? MOSFET_MODELS['generic'];
 
-    super(ComponentType.PMOS, {
+    super(ComponentType.MOSFET, {
       value: normalized.vth ?? Math.abs(defaults.vth) * -1,
       unit: 'V',
       model,
+      transistorType: 'PMOS',
     });
 
     this.model = model;
