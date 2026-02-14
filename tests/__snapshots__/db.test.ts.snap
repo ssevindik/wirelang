@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`DB Transforms > should match snapshot for db2dsl output 1`] = `
+"import { DC, GND, R, applyComponentIdentity, applyNodeIdentity, createSchematic } from "../core";
+
+const s = createSchematic("Snapshot");
+
+const V1 = DC(5);
+applyComponentIdentity(V1, { id: "voltage_source_1", label: "V1", pinIds: {"positive":"pin_1","negative":"pin_2"} });
+const R1 = R(1000);
+applyComponentIdentity(R1, { id: "resistor_2", label: "R1", pinIds: {"1":"pin_3","2":"pin_4"} });
+const GND1 = GND();
+applyComponentIdentity(GND1, { id: "ground_3", label: "GND1", pinIds: {"gnd":"pin_5"} });
+
+s.addComponents(V1, R1, GND1);
+
+const node_node_1 = s.createNode("node_1");
+applyNodeIdentity(node_node_1, "node_1");
+const node_node_2 = s.createNode("node_2");
+applyNodeIdentity(node_node_2, "node_2");
+
+s.connect(V1.pin("positive"), node_node_1);
+s.connect(R1.pin("1"), node_node_1);
+s.connect(R1.pin("2"), node_node_2);
+s.connect(GND1.pin("gnd"), node_node_2);
+
+export default s;"
+`;
