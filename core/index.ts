@@ -59,6 +59,27 @@ export {
 } from './Component';
 export { Schematic, createSchematic, type SchematicValidationResult } from './Schematic';
 
+// DB transforms and identity helpers
+export {
+  compileDslToDb,
+  reverseDbToDsl,
+  dslToDb,
+  dbToDsl,
+  dsl2db,
+  db2dsl,
+  type WireLangDb,
+  type DbComponent,
+  type DbNode,
+  type DbPin,
+  type DbToDslOptions,
+} from './db';
+export {
+  applyComponentIdentity,
+  applyNodeIdentity,
+  applyPinIdentity,
+  type ComponentIdentity,
+} from './identity';
+
 // Components
 export {
   // Passive
