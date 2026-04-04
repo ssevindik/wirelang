@@ -45,8 +45,16 @@ export class VoltageSource extends Component {
     return this.pins[0];
   }
 
+  get p(): Pin {
+    return this.positive;
+  }
+
   get negative(): Pin {
     return this.pins[1];
+  }
+
+  get n(): Pin {
+    return this.negative;
   }
 
   /**

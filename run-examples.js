@@ -3,5 +3,5 @@
  * Run WireLang examples
  */
 
-import { runAllExamples } from './dist/core/examples.js';
+import { runAllExamples } from './dist/examples.js';
 runAllExamples();

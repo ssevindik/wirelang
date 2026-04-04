@@ -42,3 +42,27 @@ See `docs/components.md` for groups. Most factories are simple functions, e.g. `
 
 - Use `applyToCircuit(s, topology)` to apply `Series`/`Parallel` results to a schematic (used in `core/examples.ts`).
 - For complex topologies (e.g. bridge rectifier) create nodes and connect pins manually.
+
+## Plain DSL Output Format
+
+`reverseDbToDsl(db)` defaults to plain DSL output (syntax-free style) and uses pin shorthand accessors:
+
+- Source pins: `p` and `n`
+- Two-terminal pins: `p1` and `p2`
+- Named pins: direct names (for example `gnd`, `anode`, `cathode`)
+
+Example:
+
+```ts
+V1 = DC(5)
+R1 = R(1000)
+GND1 = GND()
+
+Circuit(
+	"Snapshot",
+	[
+		[V1.p, R1.p1],
+		[V1.n, R1.p2, GND1.gnd]
+	]
+)
+```

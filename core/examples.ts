@@ -20,6 +20,7 @@ import {
   // Colors
   RED, GREEN, BLUE,
 } from './index';
+import { compileDslToDb, reverseDbToDsl, type WireLangDb } from './db';
 
 // =============================================================================
 // Example 1: Simple LED Circuit
@@ -298,4 +299,35 @@ export function runAllExamples(): void {
       console.log('\n✅ Circuit is valid');
     }
   }
+
+  printDbDslIoDemo();
+}
+
+function printDbDslIoDemo(): void {
+  console.log(`\n${'='.repeat(60)}`);
+  console.log('DB <-> DSL IO Demo');
+  console.log('='.repeat(60));
+
+  const dslInput = Circuit('IO Demo', DC(5), R(330), GND());
+  const dbFromDsl = compileDslToDb(dslInput);
+
+  console.log('\nINPUT (DSL schematic summary):');
+  console.log(dslInput.getSummary());
+
+  console.log('\nOUTPUT (DB JSON):');
+  console.log(JSON.stringify(dbFromDsl, null, 2));
+
+  const dbInput: WireLangDb = {
+    schema: 'wirelang-db@v1',
+    name: 'IO Demo From DB',
+    components: dbFromDsl.components,
+    nodes: dbFromDsl.nodes,
+  };
+
+  console.log('\nINPUT (DB JSON):');
+  console.log(JSON.stringify(dbInput, null, 2));
+
+  const dslFromDb = reverseDbToDsl(dbInput, { moduleImport: './index', format: 'dsl' });
+  console.log('\nOUTPUT (DSL code):');
+  console.log(dslFromDb);
 }

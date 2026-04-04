@@ -39,6 +39,7 @@ export interface DbNode {
 }
 
 export interface DbToDslOptions {
+  format?: 'dsl' | 'ts';
   moduleImport?: string;
   exportName?: string;
   preserveIds?: boolean;
@@ -379,7 +380,7 @@ function buildComponentExpression(component: DbComponent): { expression: string;
   }
 }
 
-export function reverseDbToDsl(db: WireLangDb, options: DbToDslOptions = {}): string {
+function renderTypeScriptFromDb(db: WireLangDb, options: DbToDslOptions = {}): string {
   const moduleImport = options.moduleImport ?? 'wirelang';
   const exportName = options.exportName ?? 'default';
   const preserveIds = options.preserveIds ?? true;
@@ -488,6 +489,93 @@ export function reverseDbToDsl(db: WireLangDb, options: DbToDslOptions = {}): st
   }
 
   return lines.join('\n');
+}
+
+function renderPlainDslFromDb(db: WireLangDb, options: DbToDslOptions = {}): string {
+  void options;
+  const usedNames = new Set<string>();
+  const lines: string[] = [];
+
+  const componentVars = new Map<string, string>();
+  const nodePins = new Map<string, string[]>();
+
+  for (const component of db.components) {
+    const baseName = component.label ?? component.id ?? component.type ?? 'component';
+    const varName = toSafeIdentifier(baseName, 'component', usedNames);
+    componentVars.set(component.id, varName);
+
+    const { expression } = buildComponentExpression(component);
+    lines.push(`${varName} = ${expression}`);
+
+    for (const pin of component.pins) {
+      if (!pin.nodeId) {
+        continue;
+      }
+      const refs = nodePins.get(pin.nodeId) ?? [];
+      refs.push(getPinReference(varName, component, pin.name));
+      nodePins.set(pin.nodeId, refs);
+    }
+  }
+
+  if (db.components.length > 0) {
+    lines.push('');
+  }
+  lines.push('Circuit(');
+  lines.push(`  ${toLiteral(db.name ?? 'unnamed')},`);
+  lines.push('  [');
+
+  const nodePaths: string[] = [];
+  for (const node of db.nodes) {
+    const refs = nodePins.get(node.id) ?? [];
+    if (refs.length === 0) {
+      continue;
+    }
+    if (refs.length === 1) {
+      nodePaths.push(`    [${refs[0]}, ${refs[0]}]`);
+      continue;
+    }
+    nodePaths.push(`    [${refs.join(', ')}]`);
+  }
+
+  lines.push(nodePaths.join(',\n'));
+  lines.push('  ]');
+  lines.push(')');
+
+  return lines.join('\n');
+}
+
+function getPinReference(componentVar: string, component: DbComponent, pinName: string): string {
+  const accessor = getPinAccessor(component, pinName);
+  if (accessor) {
+    return `${componentVar}.${accessor}`;
+  }
+  return `${componentVar}.pin(${toLiteral(pinName)})`;
+}
+
+function getPinAccessor(component: DbComponent, pinName: string): string | undefined {
+  if (component.type === ComponentType.VoltageSource || component.type === ComponentType.CurrentSource) {
+    if (pinName === 'positive') return 'p';
+    if (pinName === 'negative') return 'n';
+  }
+
+  if (pinName === '1') return 'p1';
+  if (pinName === '2') return 'p2';
+
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(pinName)) {
+    return pinName;
+  }
+
+  return undefined;
+}
+
+export function reverseDbToDsl(db: WireLangDb, options: DbToDslOptions = {}): string {
+  const format = options.format ?? 'dsl';
+
+  if (format === 'ts') {
+    return renderTypeScriptFromDb(db, options);
+  }
+
+  return renderPlainDslFromDb(db, options);
 }
 
 // Alias exports for common naming
