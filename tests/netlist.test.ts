@@ -220,13 +220,30 @@ R1 A B 1K
     expect(pins[1].name).toBe('2');
   });
 
-  it('assigns correct pin names for BJT (Q)', () => {
+  it('assigns WireScript pin names for a BJT, in SPICE terminal order', () => {
+    // SPICE orders Q as collector, base, emitter. The names must be the ones
+    // the components actually use, or dbToSchematic() cannot resolve them.
     const spice = 'Q1 COLL BASE EMITTER 2N2222\n.end';
     const db = importNetlist(spice);
     const pins = db.components[0].pins;
-    expect(pins[0].name).toBe('collector');
-    expect(pins[1].name).toBe('base');
-    expect(pins[2].name).toBe('emitter');
+    expect(pins.map(p => p.name)).toEqual(['C', 'B', 'E']);
+    expect(pins[0].nodeId).toBe(pins[0].nodeId);
+  });
+
+  it('assigns WireScript pin names for a FET, in SPICE terminal order', () => {
+    const db = importNetlist('M1 DRAIN GATE SOURCE IRF540\n.end');
+    expect(db.components[0].pins.map(p => p.name)).toEqual(['D', 'G', 'S']);
+  });
+
+  it('maps a J element to a JFET', () => {
+    const db = importNetlist('J1 DRAIN GATE SOURCE 2N3819\n.end');
+    expect(db.components[0].type).toBe('njfet');
+    expect(db.components[0].pins.map(p => p.name)).toEqual(['D', 'G', 'S']);
+  });
+
+  it('uses the model name to pick the channel type', () => {
+    expect(importNetlist('Q1 C B E PNP\n.end').components[0].type).toBe('pnp');
+    expect(importNetlist('M1 D G S PMOS\n.end').components[0].type).toBe('pmos');
   });
 
   it('accepts a custom name option', () => {

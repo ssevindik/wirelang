@@ -66,6 +66,28 @@ export interface NetlistEntry {
 // SPICE type-code mappings
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Is `token` a SPICE numeric value, rather than a model or part name?
+ *
+ * Part numbers routinely start with a digit (`2N3819`, `1N4007`), so a
+ * first-character test is not enough — the whole token has to parse as a
+ * number with at most one SI suffix.
+ */
+function isSpiceNumericValue(token: string): boolean {
+  return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?(T|G|MEG|K|MIL|M|U|N|P|F)?$/i.test(token.trim());
+}
+
+/** Open-loop gain assumed for an op-amp imported from a netlist. */
+const OPAMP_DEFAULT_GAIN = 100000;
+
+/** Every transistor type, including the legacy generic ones. */
+const SPICE_TRANSISTOR_TYPES = new Set<string>([
+  ComponentType.NPN, ComponentType.PNP,
+  ComponentType.NMOS, ComponentType.PMOS,
+  ComponentType.NJFET, ComponentType.PJFET,
+  ComponentType.BJT, ComponentType.MOSFET,
+]);
+
 /** Maps ComponentType → SPICE reference-designator prefix. */
 const SPICE_PREFIX: Record<string, string> = {
   [ComponentType.Resistor]: 'R',
@@ -83,6 +105,8 @@ const SPICE_PREFIX: Record<string, string> = {
   [ComponentType.MOSFET]: 'M',
   [ComponentType.NMOS]: 'M',
   [ComponentType.PMOS]: 'M',
+  [ComponentType.NJFET]: 'J',
+  [ComponentType.PJFET]: 'J',
   [ComponentType.OpAmp]: 'U',
   [ComponentType.LogicGate]: 'U',
 };
@@ -93,12 +117,28 @@ const PREFIX_TO_TYPE: Record<string, string> = {
   C: ComponentType.Capacitor,
   L: ComponentType.Inductor,
   D: ComponentType.Diode,
-  Q: ComponentType.BJT,
-  M: ComponentType.MOSFET,
+  Q: ComponentType.NPN,
+  M: ComponentType.NMOS,
+  J: ComponentType.NJFET,
   V: ComponentType.VoltageSource,
   I: ComponentType.CurrentSource,
   U: ComponentType.OpAmp,
   X: ComponentType.Ground,
+};
+
+/**
+ * A SPICE element line names its model (`Q1 c b e PNP`). When that model names
+ * a channel type, it decides which specific WireScript type the element is.
+ */
+const MODEL_TO_TYPE: Record<string, string> = {
+  NPN: ComponentType.NPN,
+  PNP: ComponentType.PNP,
+  NMOS: ComponentType.NMOS,
+  PMOS: ComponentType.PMOS,
+  NJF: ComponentType.NJFET,
+  PJF: ComponentType.PJFET,
+  NJFET: ComponentType.NJFET,
+  PJFET: ComponentType.PJFET,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,6 +159,49 @@ function spiceRefdes(component: DbComponent, index: number): string {
   return `${prefix}${index + 1}`;
 }
 
+/** Terminal order SPICE expects, by WireScript pin name. */
+const SPICE_TERMINAL_ORDER: Record<string, string[]> = {
+  [ComponentType.NPN]:   ['C', 'B', 'E'],
+  [ComponentType.PNP]:   ['C', 'B', 'E'],
+  [ComponentType.BJT]:   ['C', 'B', 'E'],
+  [ComponentType.NMOS]:  ['D', 'G', 'S'],
+  [ComponentType.PMOS]:  ['D', 'G', 'S'],
+  [ComponentType.MOSFET]:['D', 'G', 'S'],
+  [ComponentType.NJFET]: ['D', 'G', 'S'],
+  [ComponentType.PJFET]: ['D', 'G', 'S'],
+};
+
+/**
+ * Reorder a component's pins into SPICE terminal order.
+ * Components with no declared order are emitted as-is.
+ */
+function orderPinsForSpice(component: DbComponent): DbPin[] {
+  const order = SPICE_TERMINAL_ORDER[component.type];
+  if (!order) return component.pins;
+
+  const byName = new Map(component.pins.map(p => [p.name, p]));
+  const ordered = order
+    .map(name => byName.get(name))
+    .filter((p): p is DbPin => p !== undefined);
+
+  // Only reorder when every expected terminal is present; otherwise the
+  // component is not shaped how we assumed and declaration order is safer.
+  if (ordered.length !== order.length) return component.pins;
+
+  // Keep any extra pins (a MOSFET bulk terminal, say) after the known ones.
+  const extra = component.pins.filter(p => !order.includes(p.name));
+  return [...ordered, ...extra];
+}
+
+/**
+ * SPICE reference designator for a power rail emitted as a voltage source.
+ * Always starts with `V` so simulators parse it as an independent source.
+ */
+function spiceRailRefdes(component: DbComponent, index: number): string {
+  const base = (component.label ?? `RAIL${index + 1}`).replace(/[^A-Za-z0-9_]/g, '_');
+  return base.toUpperCase().startsWith('V') ? base : `V${base}`;
+}
+
 function spiceNodeName(node: DbNode): string {
   if (node.isGround) {
     return '0'; // SPICE ground is always node 0
@@ -126,6 +209,28 @@ function spiceNodeName(node: DbNode): string {
   // Sanitize node name for SPICE: replace spaces and special chars with _
   const base = (node.name ?? node.id).replace(/[^A-Za-z0-9_]/g, '_');
   return base || `N${node.id.slice(0, 6)}`;
+}
+
+/**
+ * Value field for an independent source.
+ *
+ * A bare number means DC in SPICE, so an AC source written that way silently
+ * becomes a DC source on the way back — and a rectifier that depended on the
+ * polarity reversing then reads as miswired.
+ */
+function spiceSourceValue(component: DbComponent): string {
+  const params = (component.params ?? {}) as Record<string, unknown>;
+  const extras = (component.extras ?? {}) as Record<string, unknown>;
+  const magnitude = spiceValue(component);
+  const isAC = String(params.sourceType ?? extras.sourceType ?? '').toLowerCase() === 'ac';
+  if (!isAC) return magnitude;
+
+  const frequency = extras.frequency ?? params.frequency;
+  if (typeof frequency === 'number' && frequency > 0) {
+    // Standard transient sine spec: SIN(offset amplitude frequency)
+    return `SIN(0 ${magnitude} ${frequency})`;
+  }
+  return `AC ${magnitude}`;
 }
 
 function spiceValue(component: DbComponent): string {
@@ -167,17 +272,33 @@ function exportSpice(db: WireScriptDb, options: NetlistExportOptions): string {
   // Emit each component
   for (let i = 0; i < db.components.length; i++) {
     const comp = db.components[i];
-    // Skip pure ground / power-rail pseudo-components in SPICE
-    // (they are represented by node names, not elements)
-    if (comp.type === ComponentType.Ground || comp.type === ComponentType.PowerRail) {
+
+    // Ground is a net name in SPICE (net 0), not an element.
+    if (comp.type === ComponentType.Ground) continue;
+
+    // A power rail IS a supply. Emitting it as a voltage source against net 0
+    // is the only faithful SPICE representation — skipping it, as versions
+    // before 0.5.0 did, exported a circuit with no power in it.
+    if (comp.type === ComponentType.PowerRail) {
+      const railNet = comp.pins[0]?.nodeId
+        ? nodeMap.get(comp.pins[0].nodeId) ?? 'NC'
+        : 'NC';
+      if (railNet === 'NC') continue;   // an unconnected rail powers nothing
+      const voltage = Number(comp.params?.value ?? 0);
+      lines.push(`${spiceRailRefdes(comp, i)} ${railNet} 0 ${voltage}`);
       continue;
     }
 
     const ref = spiceRefdes(comp, i);
-    const val = spiceValue(comp);
+    const isSource = comp.type === ComponentType.VoltageSource ||
+                     comp.type === ComponentType.CurrentSource;
+    const val = isSource ? spiceSourceValue(comp) : spiceValue(comp);
 
-    // Gather pin node names in pin order
-    const nets = comp.pins.map(pin => {
+    // Gather pin node names in SPICE terminal order. WireScript declares a BJT
+    // as B,C,E and a FET as G,D,S; SPICE reads Q as C,B,E and M/J as D,G,S.
+    // Emitting declaration order would silently swap collector and base.
+    const orderedPins = orderPinsForSpice(comp);
+    const nets = orderedPins.map(pin => {
       if (!pin.nodeId) return 'NC'; // not connected
       return nodeMap.get(pin.nodeId) ?? 'NC';
     });
@@ -192,10 +313,16 @@ function exportSpice(db: WireScriptDb, options: NetlistExportOptions): string {
       if (val) suffix = `${model} ; ${val}`;
     }
 
-    // BJT / MOSFET need model name
-    if ((comp.type === ComponentType.BJT || comp.type === ComponentType.NPN ||
-         comp.type === ComponentType.PNP || comp.type === ComponentType.MOSFET ||
-         comp.type === ComponentType.NMOS || comp.type === ComponentType.PMOS) && !suffix) {
+    // A logic gate's identity is its function, so name it in the model field.
+    if (comp.type === ComponentType.LogicGate) {
+      const gateType = String((comp.params as Record<string, unknown>).gateType ?? 'GATE');
+      const family = String((comp.params as Record<string, unknown>).family ?? '');
+      lines.push(`${ref} ${nets.join(' ')} ${gateType}${family ? `_${family}` : ''}`);
+      continue;
+    }
+
+    // Transistors need a model name in the element line.
+    if (SPICE_TRANSISTOR_TYPES.has(comp.type) && !suffix) {
       const transistorType = String((comp.params as Record<string, unknown>).transistorType ?? '');
       suffix = transistorType || 'GENERIC';
     }
@@ -224,6 +351,35 @@ function exportSpice(db: WireScriptDb, options: NetlistExportOptions): string {
   if (groundNets.length > 0) {
     lines.push('');
     lines.push(`* Ground nets: ${[...new Set(groundNets)].join(', ')}`);
+  }
+
+  // Rails round-trip as rails, not as anonymous voltage sources. Simulators
+  // ignore comments, so this stays valid SPICE.
+  const railNotes: string[] = [];
+  for (let i = 0; i < db.components.length; i++) {
+    const comp = db.components[i];
+    if (comp.type !== ComponentType.PowerRail) continue;
+    const nodeId = comp.pins[0]?.nodeId;
+    if (!nodeId) continue;
+    const net = nodeMap.get(nodeId) ?? 'NC';
+    const railName = String((comp.params as Record<string, unknown>).railName ?? comp.label ?? 'VCC');
+    railNotes.push(`${spiceRailRefdes(comp, i)}=${railName}@${net}`);
+  }
+  if (railNotes.length > 0) {
+    lines.push(`* Power rails: ${railNotes.join(', ')}`);
+  }
+
+  // SPICE prefixes are lossy: D covers both diodes and LEDs, Q says nothing
+  // about NPN vs PNP, and U covers every IC. Record the exact WireScript type
+  // for each element so import restores what was actually there.
+  const deviceNotes: string[] = [];
+  for (let i = 0; i < db.components.length; i++) {
+    const comp = db.components[i];
+    if (comp.type === ComponentType.Ground || comp.type === ComponentType.PowerRail) continue;
+    deviceNotes.push(`${spiceRefdes(comp, i)}=${comp.type}`);
+  }
+  if (deviceNotes.length > 0) {
+    lines.push(`* Devices: ${deviceNotes.join(', ')}`);
   }
 
   lines.push('');
@@ -323,6 +479,12 @@ interface SpiceElement {
   nets: string[];
   value: string;
   model?: string;
+  /** Set when an annotation identifies this element as a power rail. */
+  railName?: string;
+  /** `'ac'` when the element declared an AC or SIN() spec. */
+  sourceType?: string;
+  /** Frequency in Hz, from a SIN() spec. */
+  frequency?: number;
 }
 
 function parseSpiceLine(line: string): SpiceElement | null {
@@ -330,7 +492,11 @@ function parseSpiceLine(line: string): SpiceElement | null {
   const clean = line.split(';')[0].trim();
   if (!clean || clean.startsWith('*') || clean.startsWith('.')) return null;
 
-  const tokens = clean.split(/\s+/);
+  // Collapse parenthesised specs — `SIN(0 12 60)` is one field, not three.
+  const collapsed = clean.replace(/\(([^)]*)\)/g, (_m, inner: string) =>
+    `(${inner.trim().split(/[\s,]+/).join(',')})`);
+
+  const tokens = collapsed.split(/\s+/);
   if (tokens.length < 2) return null;
 
   const ref = tokens[0].toUpperCase();
@@ -338,18 +504,56 @@ function parseSpiceLine(line: string): SpiceElement | null {
   const type = PREFIX_TO_TYPE[prefix];
   if (!type) return null;
 
-  // Determine how many net tokens come before the value/model
-  // SPICE convention: R,C,L,V,I → 2 nets; Q → 3 nets; M → 4 nets; D → 2 nets
-  const netCounts: Record<string, number> = {
-    R: 2, C: 2, L: 2, D: 2, V: 2, I: 2, Q: 3, M: 4, U: 3, X: 1,
-  };
-  const netCount = netCounts[prefix] ?? 2;
+  // Two-terminal elements have a fixed net count. Transistors and subcircuits
+  // vary (a MOSFET may or may not declare a bulk terminal, an op-amp may be 3
+  // or 5 pin), so for those the trailing token is the model and everything
+  // between is a net.
+  const FIXED_NETS: Record<string, number> = { R: 2, C: 2, L: 2, D: 2, V: 2, I: 2, X: 1 };
+  // A transistor always has at least three terminals, so a short line is all
+  // nets and no model. A subcircuit (U) has no such floor — its terminal count
+  // is whatever the line says minus the trailing model name.
+  const MIN_NETS: Record<string, number> = { Q: 3, M: 3, J: 3 };
+
+  const available = tokens.length - 1;
+  let netCount: number;
+  if (FIXED_NETS[prefix] !== undefined) {
+    netCount = FIXED_NETS[prefix];
+  } else if (prefix === 'U') {
+    netCount = available >= 2 ? available - 1 : available;
+  } else {
+    const min = MIN_NETS[prefix] ?? 2;
+    netCount = available > min ? available - 1 : min;
+  }
+
   const nets = tokens.slice(1, 1 + netCount);
   const remaining = tokens.slice(1 + netCount);
   const value = remaining[0] ?? '';
   const model = remaining[1];
 
-  return { ref, type, nets, value, model };
+  // `Q1 c b e PNP` — a model naming the channel type pins down which specific
+  // WireScript type this is, rather than defaulting to the N-type variant.
+  const declared = MODEL_TO_TYPE[(value || '').toUpperCase()];
+  const resolvedType = declared ?? type;
+
+  const element: SpiceElement = { ref, type: resolvedType, nets, value, model };
+
+  // Decode an AC source spec back into sourceType + frequency.
+  const sine = /^SIN\(([^)]*)\)$/i.exec(value);
+  if (sine) {
+    const [, amplitude, frequency] = sine[1].split(',');
+    element.sourceType = 'ac';
+    element.value = amplitude ?? '0';
+    if (frequency) element.frequency = parseSpiceValue(frequency);
+  } else if (value.toUpperCase() === 'AC') {
+    element.sourceType = 'ac';
+    element.value = model ?? '0';
+    element.model = undefined;
+  } else if (value.toUpperCase() === 'DC') {
+    element.value = model ?? '0';
+    element.model = undefined;
+  }
+
+  return element;
 }
 
 function buildDbFromElements(elements: SpiceElement[], name: string): WireScriptDb {
@@ -382,7 +586,29 @@ function buildDbFromElements(elements: SpiceElement[], name: string): WireScript
     const compId = `comp_${el.ref.toLowerCase()}_${compIdx++}`;
     const numVal = parseSpiceValue(el.value);
 
+    // A power rail is a single-pin symbol: it was written as a two-terminal
+    // source against net 0, but only the rail net belongs to the component.
+    if (el.type === ComponentType.PowerRail) {
+      const railNet = el.nets[0];
+      const nodeId = railNet ? netToNodeId.get(railNet) : undefined;
+      components.push({
+        id: compId,
+        type: ComponentType.PowerRail,
+        // The refdes is unique (VCC1, VCC2); the rail *name* is shared by every
+        // rail at the same potential and belongs in params, not the label.
+        label: el.ref,
+        params: {
+          value: numVal,
+          unit: 'V',
+          railName: el.railName ?? 'VCC',
+        } as import('./types').ComponentParams,
+        pins: [{ id: `pin_${pinIdx++}`, name: 'out', nodeId: nodeId ?? undefined }],
+      });
+      continue;
+    }
+
     // Build pins
+    const extrasSeed: Record<string, unknown> = {};
     const pinNames = getSpicePinNames(el.type, el.nets.length);
     const pins: DbPin[] = el.nets.map((net, i) => {
       const nodeId = netToNodeId.get(net);
@@ -395,22 +621,59 @@ function buildDbFromElements(elements: SpiceElement[], name: string): WireScript
 
     const params = { value: numVal, unit: inferUnit(el.type) };
 
+    // A logic gate's model field is `AND_74HC` — split it back apart.
+    if (el.type === ComponentType.LogicGate) {
+      const spec = el.value || el.model || 'NOT';
+      const [gateType, ...familyParts] = spec.split('_');
+      (params as Record<string, unknown>).gateType = gateType.toUpperCase();
+      if (familyParts.length > 0) {
+        (params as Record<string, unknown>).family = familyParts.join('_');
+      }
+      params.value = Math.max(1, el.nets.length - 1);   // input count
+      params.unit = 'inputs';
+    }
+
+    // Carry the decoded source spec into the DB.
+    if (el.sourceType) {
+      (params as Record<string, unknown>).sourceType = el.sourceType;
+      if (el.frequency !== undefined) extrasSeed.frequency = el.frequency;
+    }
+
+    // An op-amp element line carries its part number where other elements
+    // carry a value (`U1 … LM741`). Keep the part number and let the open-loop
+    // gain fall back to the component default rather than parsing to 0.
+    if (el.type === ComponentType.OpAmp) {
+      const partNumber = el.model ?? (el.value && !isSpiceNumericValue(el.value) ? el.value : undefined);
+      if (partNumber) (params as Record<string, unknown>).partNumber = partNumber;
+      params.value = OPAMP_DEFAULT_GAIN;
+      params.unit = 'V/V';
+    }
+
     // Extras
-    const extras: Record<string, unknown> = {};
+    const extras: Record<string, unknown> = { ...extrasSeed };
+
+    // `Q1 c b e 2N2222` — the trailing token names the part, where other
+    // elements carry a numeric value. Keep it as the model and leave the
+    // electrical parameters to that model's defaults.
+    if (SPICE_TRANSISTOR_TYPES.has(el.type) && el.value && !isSpiceNumericValue(el.value)) {
+      extras.model = el.value;
+      params.value = 0;   // placeholder: dbToSchematic defers to the model
+    }
     if (el.model && el.model !== el.value) {
       extras.model = el.model;
     }
-    if (el.type === ComponentType.NPN || el.type === ComponentType.BJT) {
-      (params as Record<string, unknown>).transistorType = 'NPN';
-    }
-    if (el.type === ComponentType.PNP) {
-      (params as Record<string, unknown>).transistorType = 'PNP';
-    }
-    if (el.type === ComponentType.NMOS || el.type === ComponentType.MOSFET) {
-      (params as Record<string, unknown>).transistorType = 'NMOS';
-    }
-    if (el.type === ComponentType.PMOS) {
-      (params as Record<string, unknown>).transistorType = 'PMOS';
+    const TRANSISTOR_VARIANT: Record<string, string> = {
+      [ComponentType.NPN]: 'NPN',
+      [ComponentType.PNP]: 'PNP',
+      [ComponentType.NMOS]: 'NMOS',
+      [ComponentType.PMOS]: 'PMOS',
+      [ComponentType.NJFET]: 'NJFET',
+      [ComponentType.PJFET]: 'PJFET',
+      [ComponentType.BJT]: 'NPN',
+      [ComponentType.MOSFET]: 'NMOS',
+    };
+    if (TRANSISTOR_VARIANT[el.type]) {
+      (params as Record<string, unknown>).transistorType = TRANSISTOR_VARIANT[el.type];
     }
 
     components.push({
@@ -457,16 +720,32 @@ function getSpicePinNames(type: string, count: number): string[] {
     case ComponentType.VoltageSource:
     case ComponentType.CurrentSource:
       return ['positive', 'negative'];
+    // These must be WireScript's own pin names, in SPICE terminal order —
+    // dbToSchematic() looks pins up by name, so 'collector' would not resolve.
     case ComponentType.BJT:
     case ComponentType.NPN:
     case ComponentType.PNP:
-      return ['collector', 'base', 'emitter'];
+      return ['C', 'B', 'E'];
     case ComponentType.MOSFET:
     case ComponentType.NMOS:
     case ComponentType.PMOS:
-      return ['drain', 'gate', 'source', 'bulk'].slice(0, count);
+    case ComponentType.NJFET:
+    case ComponentType.PJFET:
+      return ['D', 'G', 'S', 'bulk'].slice(0, count);
     case ComponentType.OpAmp:
-      return ['out', 'in+', 'in-'].slice(0, count);
+      return ['inP', 'inN', 'out', 'vPos', 'vNeg'].slice(0, count);
+    case ComponentType.LogicGate:
+      // A 1-input gate is an inverter/buffer: A, Y. Otherwise A, B, …, Y.
+      return count <= 2
+        ? ['A', 'Y'].slice(0, count)
+        : [...['A', 'B', 'C', 'D'].slice(0, count - 1), 'Y'];
+    case ComponentType.LogicHigh:
+    case ComponentType.LogicLow:
+    case ComponentType.Clock:
+    case ComponentType.PowerRail:
+      return ['out'];
+    case ComponentType.Ground:
+      return ['gnd'];
     default:
       return Array.from({ length: count }, (_, i) => String(i + 1));
   }
@@ -481,6 +760,48 @@ function inferUnit(type: string): string {
     case ComponentType.CurrentSource: return 'A';
     default: return '';
   }
+}
+
+/**
+ * Annotations WireScript writes as SPICE comments so that information with no
+ * SPICE representation survives a round-trip. Simulators ignore these lines.
+ */
+interface SpiceAnnotations {
+  /** refdes → rail name, for `V…` elements that were really a PowerRail. */
+  rails: Map<string, string>;
+  /** refdes → exact WireScript component type. */
+  devices: Map<string, string>;
+}
+
+function parseAnnotations(lines: string[]): SpiceAnnotations {
+  const rails = new Map<string, string>();
+  const devices = new Map<string, string>();
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line.startsWith('*')) continue;
+    const body = line.slice(1).trim();
+
+    const railMatch = /^Power rails:\s*(.+)$/i.exec(body);
+    if (railMatch) {
+      for (const entry of railMatch[1].split(',')) {
+        // `VCC1=VCC@node_3`
+        const m = /^\s*([^=]+)=([^@]+)(?:@(.*))?\s*$/.exec(entry);
+        if (m) rails.set(m[1].trim().toUpperCase(), m[2].trim());
+      }
+      continue;
+    }
+
+    const deviceMatch = /^Devices:\s*(.+)$/i.exec(body);
+    if (deviceMatch) {
+      for (const entry of deviceMatch[1].split(',')) {
+        const m = /^\s*([^=]+)=(.+?)\s*$/.exec(entry);
+        if (m) devices.set(m[1].trim().toUpperCase(), m[2].trim());
+      }
+    }
+  }
+
+  return { rails, devices };
 }
 
 function importSpice(src: string, options: NetlistImportOptions): WireScriptDb {
@@ -500,9 +821,24 @@ function importSpice(src: string, options: NetlistImportOptions): WireScriptDb {
     }
   }
 
+  const annotations = parseAnnotations(lines);
+
   for (const line of lines) {
     const el = parseSpiceLine(line);
-    if (el) elements.push(el);
+    if (!el) continue;
+
+    // A voltage source WireScript wrote for a PowerRail becomes a rail again.
+    const railName = annotations.rails.get(el.ref);
+    if (railName && el.type === ComponentType.VoltageSource) {
+      el.type = ComponentType.PowerRail;
+      el.railName = railName;
+    }
+
+    // An exact device type recorded on export beats what the prefix implies.
+    const declaredType = annotations.devices.get(el.ref);
+    if (declaredType) el.type = declaredType;
+
+    elements.push(el);
   }
 
   const name = options.name ?? (parsedTitle || 'imported');

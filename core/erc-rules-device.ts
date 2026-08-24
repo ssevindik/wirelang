@@ -425,6 +425,12 @@ export const transistorNoDrive: ERCRule = {
         (p.type === PinType.Output || p.type === PinType.PowerOut));
       if (hasDriver) continue;
       if (ctx.findSupplyPath(net, { exclude: new Set([t]) })) continue;
+      // A driver reached through a base/gate resistor still drives the device.
+      if (ctx.findNetWhere(
+        net,
+        n => n.pins.some(p => p.type === PinType.Output || p.type === PinType.PowerOut),
+        { exclude: new Set([t]) },
+      )) continue;
 
       findings.push({
         message: `${t.label}: ${label} sits on net "${net.name}", which has no driver and no path to a supply. The device state is undefined.`,

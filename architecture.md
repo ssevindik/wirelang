@@ -134,6 +134,13 @@ This means the same rule set serves an exploratory sketch and a pre-manufacture 
 `runERC` returns an `ERCResult` with `passed`, severity-partitioned violations, `byRule()`
 lookup, a human `report()` with fix hints, and `toJSON()` for tooling.
 
+### 5.4 One validator, two views
+
+`Schematic.validate()` predates ERC and returns flat strings. Since 0.5.0 it is
+a thin view over the same engine, so the two can no longer disagree about
+whether a circuit is sound. Use `erc()` for anything that needs the affected
+components, the fix hints, or severity control.
+
 ---
 
 ## 6. Interoperability & I/O

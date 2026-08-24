@@ -526,6 +526,11 @@ export const floatingInput: ERCRule = {
         if (net.pins.some(p => p !== pin && isDriver(p))) continue;
         // A pull-up/pull-down to a rail is a valid way to define the level.
         if (ctx.findSupplyPath(net, { accept: n => n.potential !== undefined })) continue;
+        // So is a driver reached through series passives — an op-amp's
+        // inverting input fed back through a resistor is driven, not floating.
+        if (ctx.findNetWhere(net, n => n.pins.some(isDriver), { exclude: new Set([comp]) })) {
+          continue;
+        }
 
         findings.push({
           message: `${pin.fullName}: net "${net.name}" has no driver and no path to a supply. The input level is undefined.`,

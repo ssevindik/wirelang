@@ -42,7 +42,7 @@ export class NMOSTransistor extends FETComponent {
     const model = normalized.model ?? 'generic';
     const defaults = MOSFET_MODELS[model] ?? MOSFET_MODELS['generic'];
 
-    super(ComponentType.MOSFET, {
+    super(ComponentType.NMOS, {
       value: normalized.vth ?? defaults.vth,
       unit: 'V',
       model,
@@ -88,30 +88,40 @@ export class PMOSTransistor extends FETComponent {
     const model = normalized.model ?? 'generic';
     const defaults = MOSFET_MODELS[model] ?? MOSFET_MODELS['generic'];
 
-    super(ComponentType.MOSFET, {
-      value: normalized.vth ?? Math.abs(defaults.vth) * -1,
+    // A P-channel threshold is negative. The generic model's default is stored
+    // positive, so flip it — otherwise `vth` and `params.value` disagree.
+    const vth = normalized.vth ?? Math.abs(defaults.vth) * -1;
+
+    super(ComponentType.PMOS, {
+      value: vth,
       unit: 'V',
       model,
       transistorType: 'PMOS',
     });
 
     this.model = model;
-    this.vth = normalized.vth ?? defaults.vth;
+    this.vth = vth;
     this.rds_on = normalized.rds_on ?? defaults.rds_on;
     this.id_max = normalized.id_max ?? defaults.id_max;
   }
 
   validate(): string[] {
-    const errors = super.validate();
-    
+    // `value` is vth, which is negative for a P-channel MOSFET (an IRF9540 is
+    // -4V), so the base "value cannot be negative" check does not apply.
+    const errors: string[] = [];
+
+    if (this.vth >= 0) {
+      errors.push('PMOS: threshold voltage (vth) must be negative for a P-channel MOSFET');
+    }
+
     if (this.rds_on < 0) {
       errors.push('PMOS: Rds(on) cannot be negative');
     }
-    
+
     if (this.id_max <= 0) {
       errors.push('PMOS: Max drain current must be positive');
     }
-    
+
     return errors;
   }
 

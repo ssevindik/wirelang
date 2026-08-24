@@ -64,6 +64,9 @@ export { Schematic, createSchematic, type SchematicValidationResult } from './Sc
 export {
   compileDslToDb,
   reverseDbToDsl,
+  dbToSchematic,
+  db2schematic,
+  resolveComponentType,
   dslToDb,
   dbToDsl,
   dsl2db,
@@ -136,6 +139,9 @@ export {
   // Transistors - MOSFET
   NMOSTransistor, NMOS,
   PMOSTransistor, PMOS,
+  // Transistors - JFET
+  NJFETTransistor, NJFET,
+  PJFETTransistor, PJFET,
   // Analog ICs
   OpAmpComponent, OpAmp3Component, OpAmp, OpAmp3, LM741, TL072, NE5532, LM358,
   // Logic Gates
@@ -150,6 +156,7 @@ export {
   type CurrentSourceParams,
   type BJTParams,
   type MOSFETParams,
+  type JFETParams,
   type OpAmpParams,
   type GateType,
 } from './components';

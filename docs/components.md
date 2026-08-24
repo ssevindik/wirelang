@@ -267,7 +267,53 @@ const m = NMOS({ model: 'IRF540', vth: 3.0, rds_on: 0.077, id_max: 28 });
 
 ### P-Channel MOSFET — `PMOS(params?)`
 
-Same interface as `NMOS`.
+Same interface as `NMOS`. The threshold voltage is **negative** — `PMOS().vth`
+is `-2`, and `PMOS('IRF9540').vth` is `-4`.
+
+---
+
+### N-Channel JFET — `NJFET(params?)`
+
+A JFET is *depletion-mode*: it conducts at Vgs = 0 and is pinched off by
+driving the gate towards the source. That is the opposite of a MOSFET, which is
+why a JFET with a floating gate defaults to conducting.
+
+```ts
+import { NJFET } from '@ssevindikx/wirescript';
+
+const j = NJFET();
+const j = NJFET('2N3819');
+const j = NJFET({ model: 'J201', vgs_off: -0.8, idss: 0.0006 });
+```
+
+| Pin | Name | Description |
+|---|---|---|
+| `G` | `'G'` | Gate (control) |
+| `D` | `'D'` | Drain |
+| `S` | `'S'` | Source |
+
+**Params:** `vgs_off` (pinch-off V, **negative** for N-channel), `idss` (drain
+current at Vgs = 0, in A), `rds_on` (Ω)
+
+**Models:** `2N3819`, `2N5457`, `2N5458`, `J201`, `BF245`
+
+```ts
+// Source follower
+const j = NJFET('2N3819');
+Circuit('Follower', [
+  [VCC(12), j.D],
+  [j.S, R(kOhm(2.2)), GND()],
+  [j.G, R(MOhm(1)), GND()],
+]);
+```
+
+---
+
+### P-Channel JFET — `PJFET(params?)`
+
+Same interface as `NJFET`, with a **positive** pinch-off voltage.
+
+**Models:** `2N5460`, `2N5461`, `J270`
 
 ---
 
@@ -383,8 +429,40 @@ ComponentType.VoltageSource  // 'voltage_source'
 ComponentType.CurrentSource  // 'current_source'
 ComponentType.Ground         // 'ground'
 ComponentType.PowerRail      // 'power_rail'
-ComponentType.BJT            // 'bjt'
-ComponentType.MOSFET         // 'mosfet'
+
+// Transistors — each factory carries its own specific type
+ComponentType.NPN            // 'npn'
+ComponentType.PNP            // 'pnp'
+ComponentType.NMOS           // 'nmos'
+ComponentType.PMOS           // 'pmos'
+ComponentType.NJFET          // 'njfet'
+ComponentType.PJFET          // 'pjfet'
+
 ComponentType.OpAmp          // 'opamp'
 ComponentType.LogicGate      // 'logic_gate'
+ComponentType.LogicHigh      // 'logic_high'
+ComponentType.LogicLow       // 'logic_low'
+ComponentType.Clock          // 'clock'
+```
+
+### Deprecated: the generic transistor types
+
+`ComponentType.BJT` (`'bjt'`) and `ComponentType.MOSFET` (`'mosfet'`) are
+**deprecated since 0.5.0**. No component emits them — `NPN()` is
+`ComponentType.NPN`, `NMOS()` is `ComponentType.NMOS`, and so on.
+
+They remain in the enum so that `wirescript-db@v1` files written before 0.5.0
+still load: deserialization maps the legacy type onto the specific one using
+`params.transistorType`.
+
+```ts
+// before 0.5.0
+if (c.type === ComponentType.BJT && c.params.transistorType === 'PNP') { … }
+
+// now
+if (c.type === ComponentType.PNP) { … }
+
+// reading a DB record of unknown vintage
+import { resolveComponentType } from '@ssevindikx/wirescript';
+resolveComponentType(record);   // 'pnp', whichever way it was written
 ```

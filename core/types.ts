@@ -14,16 +14,24 @@ export enum ComponentType {
   Ground = 'ground',
   PowerRail = 'power_rail',  // VCC, VDD, etc.
   // Transistors - BJT
-  BJT = 'bjt',
   NPN = 'npn',
   PNP = 'pnp',
   // Transistors - MOSFET
-  MOSFET = 'mosfet',
   NMOS = 'nmos',
   PMOS = 'pmos',
   // Transistors - JFET
   NJFET = 'njfet',
   PJFET = 'pjfet',
+  /**
+   * @deprecated Legacy generic transistor types. No component emits these —
+   * `NPN()` is `ComponentType.NPN`, `NMOS()` is `ComponentType.NMOS`, and so on.
+   * They remain so that `wirescript-db@v1` files written before 0.5.0 still
+   * load; deserialization maps them to the specific type using
+   * `params.transistorType`.
+   */
+  BJT = 'bjt',
+  /** @deprecated See {@link ComponentType.BJT}. */
+  MOSFET = 'mosfet',
   // Integrated Circuits
   OpAmp = 'opamp',
   // Logic Gates

@@ -449,6 +449,28 @@ floating input.
 
 ---
 
+## `Schematic.validate()`
+
+`validate()` is a flat-string view over the same engine:
+
+```ts
+const { valid, errors, warnings } = circuit.validate();
+// errors: ['[ERC_NO_GROUND] Circuit has no ground (GND) reference. …']
+```
+
+`valid` is `result.passed`; `errors` and `warnings` are the ERC violations of
+that severity, formatted as `[RULE_ID] message`. `info` findings are omitted —
+they are design notes, not validation failures.
+
+Prefer `erc()` for new code: it reports the affected components, nodes and pins,
+tells you how to fix each finding, and lets you tune severity.
+
+> **Changed in 0.5.0.** `validate()` used to run its own, laxer checks — an
+> unconnected pin was a warning there and an error in ERC. The two can no longer
+> disagree.
+
+---
+
 ## Limits
 
 ERC is a **static** check. It does not solve the circuit, so it deliberately does not

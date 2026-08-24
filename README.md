@@ -2,7 +2,9 @@
 
 A **code-first DSL** for describing electronic circuits in TypeScript.
 
-> ⚠️ Early experimental stage — API may change before stable release.
+> **0.5.0 — the breaking window before 1.0.** The public API is settling. See
+> [CHANGELOG.md](./CHANGELOG.md) for what changed and the
+> [versioning policy](#versioning-policy) for what stability will mean at 1.0.
 
 ---
 
@@ -80,6 +82,7 @@ Circuit('BJT Switch', [
 | [Serialization](./docs/serialization.md) | JSON IR, DSL ↔ DB round-trip |
 | [CLI](./docs/cli.md) | Command-line interface |
 | [Examples](./docs/examples.md) | 12 ready-to-run circuit examples |
+| [Changelog](./CHANGELOG.md) | What changed in each release, and how to migrate |
 
 ---
 
@@ -90,11 +93,12 @@ Circuit('BJT Switch', [
 - **31 ERC rules** — Shorts, polarity, current and voltage ratings, power dissipation,
   fan-out, logic levels, floating inputs, transistor drive, op-amp topology, and more.
   Configurable severity with `strict` / `balanced` / `relaxed` presets.
-- **Component library** — Resistors, capacitors, inductors, diodes, LEDs, BJTs, MOSFETs, op-amps, logic gates
+- **Component library** — Resistors, capacitors, inductors, diodes, LEDs, BJTs, MOSFETs, JFETs, op-amps, logic gates
 - **SI unit helpers** — `kOhm`, `uF`, `mH`, `kHz`, `mA`, …
-- **Interoperability** — SPICE netlists, `.ws` DSL files, JSON/CSV DB round-trip
+- **Interoperability** — SPICE netlists, `.ws` DSL files, JSON/CSV DB. Every format
+  round-trips back to the live IR through `dbToSchematic()`.
 - **CLI** — `wirescript convert` / `compile` / `decompile` / `erc` / `rules`
-- **327 tests** passing
+- **390 tests** passing
 
 ## Validate from the shell
 
@@ -103,6 +107,42 @@ wirescript erc circuit.ws              # exits 1 if the circuit has an error
 wirescript erc circuit.ws --preset strict --strict-exit   # CI gate
 wirescript rules                       # list all 31 rules
 ```
+
+---
+
+## Versioning policy
+
+WireScript follows [semantic versioning](https://semver.org/). From **1.0.0**
+onwards the following are stable, and a breaking change to any of them requires
+a major version bump:
+
+| Stable | What that means |
+|---|---|
+| The exports of `@ssevindikx/wirescript` | Nothing is removed or renamed. `tests/api-surface.test.ts` enforces this. |
+| The `wirescript-db@v1` schema | Files written by an older 1.x still load. |
+| `ERC_*` rule ids | A rule id keeps its meaning; `--off` and `severity` overrides keep working. |
+| CLI command names and flags | Existing invocations keep working. |
+
+**Deliberately not stable:** ERC rule *severities*, and the set of rules itself.
+
+New rules will keep finding faults in circuits that previously passed, and an
+existing rule may be escalated in a minor release. If that were treated as
+breaking, the rule set would freeze at 1.0 and never improve. Pin the behaviour
+you need instead:
+
+```ts
+runERC(circuit, {
+  preset: 'relaxed',                 // only unambiguous faults are errors
+  severity: { fanOut: 'warning' },   // or pin one rule
+});
+```
+
+```sh
+wirescript erc circuit.ws --preset relaxed --off missingDecoupling
+```
+
+Pre-1.0 releases (`0.x`) may break anything; the changelog says what and how to
+migrate.
 
 ---
 

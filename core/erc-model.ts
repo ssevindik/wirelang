@@ -62,12 +62,6 @@ const DRIVING_PIN_TYPES = new Set<PinType>([
   PinType.TriState,
 ]);
 
-/** Pin types that must be driven by something else on their net. */
-const DRIVEN_PIN_TYPES = new Set<PinType>([
-  PinType.Input,
-  PinType.PowerIn,
-]);
-
 /** Component types that supply power / define a potential. */
 export const SUPPLY_TYPES = new Set<ComponentType>([
   ComponentType.VoltageSource,
@@ -94,20 +88,8 @@ export const IC_TYPES = new Set<ComponentType>([
   ComponentType.LogicGate,
 ]);
 
-/** Digital logic components. */
-export const DIGITAL_TYPES = new Set<ComponentType>([
-  ComponentType.LogicGate,
-  ComponentType.LogicHigh,
-  ComponentType.LogicLow,
-  ComponentType.Clock,
-]);
-
 export function isDriver(pin: Pin): boolean {
   return DRIVING_PIN_TYPES.has(pin.type);
-}
-
-export function isDriven(pin: Pin): boolean {
-  return DRIVEN_PIN_TYPES.has(pin.type);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -466,6 +448,51 @@ export class ERCContext {
     }
 
     return best;
+  }
+
+  /**
+   * Nearest net reachable from `start` through two-terminal components that
+   * satisfies `predicate`, or `null` if none is.
+   *
+   * Unlike `findSupplyPath`, the target net needs no known potential — this
+   * answers "is there something of this kind out there", which is what
+   * driver-reachability questions need. A signal driven through a series
+   * resistor is still driven.
+   */
+  findNetWhere(
+    start: Net,
+    predicate: (net: Net) => boolean,
+    options: { exclude?: Set<Component>; direction?: PathDirection; maxDepth?: number } = {},
+  ): Net | null {
+    const skip = options.exclude ?? new Set<Component>();
+    const direction = options.direction ?? 'either';
+    const maxDepth = options.maxDepth ?? 32;
+
+    const visited = new Set<string>([start.id]);
+    let frontier: Net[] = [start];
+
+    for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+      const next: Net[] = [];
+      for (const net of frontier) {
+        for (const pin of net.pins) {
+          const comp = this.componentOf(pin);
+          if (!comp || skip.has(comp)) continue;
+          const element = seriesElementOf(comp);
+          if (!element || element.blocksDC) continue;
+          if (comp.pins.length !== 2) continue;
+          if (!canTraverse(comp, pin, direction)) continue;
+
+          const otherPin = comp.pins.find(p => p !== pin);
+          const nextNet = otherPin ? this.netOf(otherPin) : undefined;
+          if (!nextNet || visited.has(nextNet.id)) continue;
+          visited.add(nextNet.id);
+          if (predicate(nextNet)) return nextNet;
+          next.push(nextNet);
+        }
+      }
+      frontier = next;
+    }
+    return null;
   }
 
   /**

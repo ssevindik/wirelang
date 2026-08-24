@@ -125,9 +125,57 @@ import {
 | `diode`, `led` | `D` | `D1` |
 | `voltage_source` | `V` | `V1` |
 | `current_source` | `I` | `I1` |
-| `bjt`, `npn`, `pnp` | `Q` | `Q1` |
-| `mosfet`, `nmos`, `pmos` | `M` | `M1` |
-| `opamp` | `U` | `U1` |
+| `npn`, `pnp` | `Q` | `Q1` |
+| `nmos`, `pmos` | `M` | `M1` |
+| `njfet`, `pjfet` | `J` | `J1` |
+| `opamp`, `logic_gate` | `U` | `U1` |
+| `power_rail` | `V` | `VCC1` |
+| `ground` | — | net `0` |
+
+### Terminal order
+
+SPICE reads terminals in its own order, which is not WireScript's declaration
+order. Export reorders them; import names them back.
+
+| Element | SPICE order | WireScript pins |
+|---|---|---|
+| `Q` | collector, base, emitter | `C`, `B`, `E` |
+| `M`, `J` | drain, gate, source | `D`, `G`, `S` |
+| `V`, `I` | +, − | `positive`, `negative` |
+| `D` | anode, cathode | `anode`, `cathode` |
+
+> **Fixed in 0.5.0.** Transistors were previously emitted in declaration order
+> (`B, C, E`), which SPICE reads as collector, base, emitter — so every
+> exported netlist had collector and base swapped.
+
+### What SPICE cannot express, and how it survives anyway
+
+SPICE has no symbol for a ground reference, a power rail, or an LED as distinct
+from a diode. WireScript writes annotation comments that simulators ignore, so
+nothing is lost on the way back:
+
+```
+V1 node_1 0 5
+R1 node_1 node_2 330
+D_LED1 node_2 0 1.8
+
+* Ground nets: 0
+* Power rails: VCC1=VCC@node_1
+* Devices: V1=voltage_source, R1=resistor, D_LED1=led
+```
+
+- **`* Ground nets:`** — which net is the 0V reference, re-materialised as a
+  `GND()` component on import.
+- **`* Power rails:`** — which `V` elements were really `VCC()`/`VDD()` rails.
+- **`* Devices:`** — each element's exact WireScript type, so an LED comes back
+  an LED and a PNP comes back a PNP.
+
+**AC sources** are written as `SIN(0 <amplitude> <frequency>)` rather than a
+bare number, which is both correct SPICE and what keeps an AC source from
+returning as DC.
+
+> **Power rails were dropped entirely before 0.5.0**, so an exported netlist
+> had no supply in it and simulated as a dead circuit.
 
 ### SI value suffixes (import)
 

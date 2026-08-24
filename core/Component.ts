@@ -67,9 +67,9 @@ export abstract class Component {
       case ComponentType.PNP: return 'Q';  // BJT
       case ComponentType.MOSFET:
       case ComponentType.NMOS:
-      case ComponentType.PMOS:
+      case ComponentType.PMOS: return 'M';   // MOSFET
       case ComponentType.NJFET:
-      case ComponentType.PJFET: return 'M';  // FET
+      case ComponentType.PJFET: return 'J';  // JFET, matching the SPICE element
       default: return 'U';  // Unknown/IC
     }
   }

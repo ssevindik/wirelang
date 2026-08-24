@@ -6,7 +6,9 @@ import { Component } from './Component';
 import { Node } from './Node';
 import { Pin } from './Pin';
 import { Schematic } from './Schematic';
-import { ComponentParams, ComponentType, PinDirection, SourceType } from './types';
+import { Color, ComponentParams, ComponentType, PinDirection, SourceType } from './types';
+import { applyComponentIdentity, applyNodeIdentity } from './identity';
+import * as components from './components';
 
 export interface WireScriptDb {
   schema: 'wirescript-db@v1';
@@ -149,6 +151,53 @@ function toSafeIdentifier(raw: string, fallback: string, used: Set<string>): str
   return candidate;
 }
 
+/** Constructor parameters a transistor may carry in `extras`. */
+const TRANSISTOR_PARAM_KEYS = [
+  'hfe', 'vce_sat', 'vbe',            // BJT
+  'vth', 'rds_on', 'id_max',          // MOSFET
+  'vgs_off', 'idss',                  // JFET
+] as const;
+
+/** Specific type a legacy generic type resolves to, given `transistorType`. */
+const LEGACY_TRANSISTOR_RESOLUTION: Record<string, Record<string, ComponentType>> = {
+  [ComponentType.BJT]: {
+    NPN: ComponentType.NPN,
+    PNP: ComponentType.PNP,
+  },
+  [ComponentType.MOSFET]: {
+    NMOS: ComponentType.NMOS,
+    PMOS: ComponentType.PMOS,
+  },
+};
+
+/**
+ * Resolve a DB component's type, mapping the legacy generic transistor types
+ * written before 0.5.0 onto the specific type they always meant.
+ *
+ * `wirescript-db@v1` files in the wild carry `"type": "bjt"` with
+ * `params.transistorType: "NPN"`. Those must keep loading.
+ */
+export function resolveComponentType(component: DbComponent): string {
+  const table = LEGACY_TRANSISTOR_RESOLUTION[component.type];
+  if (!table) return component.type;
+  const variant = String((component.params as Record<string, unknown> | undefined)?.transistorType ?? '');
+  return table[variant] ?? (component.type === ComponentType.BJT
+    ? ComponentType.NPN
+    : ComponentType.NMOS);
+}
+
+/** Factory function name for a transistor component (`NPN`, `PMOS`, …). */
+function transistorFactoryName(component: DbComponent): string {
+  switch (resolveComponentType(component)) {
+    case ComponentType.PNP:   return 'PNP';
+    case ComponentType.NMOS:  return 'NMOS';
+    case ComponentType.PMOS:  return 'PMOS';
+    case ComponentType.NJFET: return 'NJFET';
+    case ComponentType.PJFET: return 'PJFET';
+    default:                  return 'NPN';
+  }
+}
+
 function buildComponentExpression(component: DbComponent): { expression: string; imports: string[] } {
   const params = component.params ?? { value: 0, unit: '' };
   const extras = component.extras ?? {};
@@ -271,61 +320,31 @@ function buildComponentExpression(component: DbComponent): { expression: string;
       imports.add('PowerRail');
       return { expression: `new PowerRail(${toLiteral(voltage)}, ${toLiteral(railName)})`, imports: Array.from(imports) };
     }
-    case ComponentType.BJT: {
-      const transistorType = (params as Record<string, unknown>).transistorType;
+    case ComponentType.NPN:
+    case ComponentType.PNP:
+    case ComponentType.NMOS:
+    case ComponentType.PMOS:
+    case ComponentType.NJFET:
+    case ComponentType.PJFET:
+    case ComponentType.BJT:      // legacy pre-0.5.0 DB
+    case ComponentType.MOSFET: { // legacy pre-0.5.0 DB
+      const factory = transistorFactoryName(component);
+      const args: Record<string, unknown> = {};
       const model = (extras as Record<string, unknown>).model ?? (params as Record<string, unknown>).model;
-      const bjtParams: Record<string, unknown> = {};
-      if (model !== undefined) bjtParams.model = model;
-      if (extras.hfe !== undefined) bjtParams.hfe = extras.hfe;
-      if (extras.vce_sat !== undefined) bjtParams.vce_sat = extras.vce_sat;
-      if (extras.vbe !== undefined) bjtParams.vbe = extras.vbe;
+      if (model !== undefined) args.model = model;
+      for (const key of TRANSISTOR_PARAM_KEYS) {
+        if (extras[key] !== undefined) args[key] = extras[key];
+      }
 
-      if (transistorType === 'PNP') {
-        imports.add('PNP');
-        if (Object.keys(bjtParams).length === 0) {
-          return { expression: 'PNP()', imports: Array.from(imports) };
-        }
-        if (Object.keys(bjtParams).length === 1 && bjtParams.model !== undefined) {
-          return { expression: `PNP(${toLiteral(bjtParams.model)})`, imports: Array.from(imports) };
-        }
-        return { expression: `PNP(${toObjectLiteral(bjtParams)})`, imports: Array.from(imports) };
+      imports.add(factory);
+      const keys = Object.keys(args);
+      if (keys.length === 0) {
+        return { expression: `${factory}()`, imports: Array.from(imports) };
       }
-      imports.add('NPN');
-      if (Object.keys(bjtParams).length === 0) {
-        return { expression: 'NPN()', imports: Array.from(imports) };
+      if (keys.length === 1 && args.model !== undefined) {
+        return { expression: `${factory}(${toLiteral(args.model)})`, imports: Array.from(imports) };
       }
-      if (Object.keys(bjtParams).length === 1 && bjtParams.model !== undefined) {
-        return { expression: `NPN(${toLiteral(bjtParams.model)})`, imports: Array.from(imports) };
-      }
-      return { expression: `NPN(${toObjectLiteral(bjtParams)})`, imports: Array.from(imports) };
-    }
-    case ComponentType.MOSFET: {
-      const transistorType = (params as Record<string, unknown>).transistorType;
-      const model = (extras as Record<string, unknown>).model ?? (params as Record<string, unknown>).model;
-      const fetParams: Record<string, unknown> = {};
-      if (model !== undefined) fetParams.model = model;
-      if (extras.vth !== undefined) fetParams.vth = extras.vth;
-      if (extras.rds_on !== undefined) fetParams.rds_on = extras.rds_on;
-      if (extras.id_max !== undefined) fetParams.id_max = extras.id_max;
-
-      if (transistorType === 'PMOS') {
-        imports.add('PMOS');
-        if (Object.keys(fetParams).length === 0) {
-          return { expression: 'PMOS()', imports: Array.from(imports) };
-        }
-        if (Object.keys(fetParams).length === 1 && fetParams.model !== undefined) {
-          return { expression: `PMOS(${toLiteral(fetParams.model)})`, imports: Array.from(imports) };
-        }
-        return { expression: `PMOS(${toObjectLiteral(fetParams)})`, imports: Array.from(imports) };
-      }
-      imports.add('NMOS');
-      if (Object.keys(fetParams).length === 0) {
-        return { expression: 'NMOS()', imports: Array.from(imports) };
-      }
-      if (Object.keys(fetParams).length === 1 && fetParams.model !== undefined) {
-        return { expression: `NMOS(${toLiteral(fetParams.model)})`, imports: Array.from(imports) };
-      }
-      return { expression: `NMOS(${toObjectLiteral(fetParams)})`, imports: Array.from(imports) };
+      return { expression: `${factory}(${toObjectLiteral(args)})`, imports: Array.from(imports) };
     }
     case ComponentType.OpAmp: {
       const partNumber = (extras as Record<string, unknown>).partNumber ?? (params as Record<string, unknown>).partNumber;
@@ -820,3 +839,204 @@ export function deserializeDb(src: string, options: DbDeserializeOptions = {}): 
   }
   return JSON.parse(src) as WireScriptDb;
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// DB → Schematic (the live IR)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a live component instance from its DB record.
+ *
+ * Params are re-applied afterwards from the record, so a value the constructor
+ * derived (a model default, say) never overrides what was serialized.
+ */
+function instantiateComponent(record: DbComponent): Component {
+  const params = (record.params ?? { value: 0, unit: '' }) as Record<string, unknown>;
+  const extras = (record.extras ?? {}) as Record<string, unknown>;
+  const value = typeof params.value === 'number' ? params.value : 0;
+
+  const pick = <T>(...keys: string[]): T | undefined => {
+    for (const key of keys) {
+      if (extras[key] !== undefined) return extras[key] as T;
+      if (params[key] !== undefined) return params[key] as T;
+    }
+    return undefined;
+  };
+
+  const transistorArgs = (): Record<string, unknown> => {
+    const args: Record<string, unknown> = {};
+    const model = pick<string>('model');
+    if (model !== undefined) args.model = model;
+    for (const key of TRANSISTOR_PARAM_KEYS) {
+      const v = pick<unknown>(key);
+      if (v !== undefined) args[key] = v;
+    }
+    return args;
+  };
+
+  switch (resolveComponentType(record)) {
+    case ComponentType.Resistor:  return new components.Resistor(value);
+    case ComponentType.Capacitor: return new components.Capacitor(value);
+    case ComponentType.Inductor:  return new components.Inductor(value);
+
+    case ComponentType.Diode:
+      return new components.Diode({
+        forwardVoltage: pick<number>('forwardVoltage') ?? value,
+        maxCurrent: pick<number>('maxCurrent'),
+        partNumber: pick<string>('partNumber'),
+      });
+
+    case ComponentType.LED:
+      return new components.LEDComponent({
+        color: pick<Color>('color'),
+        forwardVoltage: pick<number>('forwardVoltage') ?? value,
+        maxCurrent: pick<number>('maxCurrent'),
+      });
+
+    case ComponentType.VoltageSource:
+      return new components.VoltageSource({
+        voltage: value,
+        sourceType: (pick<SourceType>('sourceType') ?? SourceType.DC),
+        frequency: pick<number>('frequency'),
+      });
+
+    case ComponentType.CurrentSource:
+      return new components.CurrentSource({
+        current: value,
+        sourceType: (pick<SourceType>('sourceType') ?? SourceType.DC),
+        frequency: pick<number>('frequency'),
+      });
+
+    case ComponentType.Ground:    return new components.Ground();
+    case ComponentType.PowerRail:
+      return new components.PowerRail(value, pick<string>('railName') ?? 'VCC');
+
+    case ComponentType.NPN:   return new components.NPNTransistor(transistorArgs());
+    case ComponentType.PNP:   return new components.PNPTransistor(transistorArgs());
+    case ComponentType.NMOS:  return new components.NMOSTransistor(transistorArgs());
+    case ComponentType.PMOS:  return new components.PMOSTransistor(transistorArgs());
+    case ComponentType.NJFET: return new components.NJFETTransistor(transistorArgs());
+    case ComponentType.PJFET: return new components.PJFETTransistor(transistorArgs());
+
+    case ComponentType.OpAmp: {
+      const opAmpParams = {
+        partNumber: pick<string>('partNumber'),
+        gain: pick<number>('gain') ?? value,
+      };
+      return record.pins.length === 3
+        ? new components.OpAmp3Component(opAmpParams)
+        : new components.OpAmpComponent(opAmpParams);
+    }
+
+    case ComponentType.LogicGate: {
+      const gateType = String(pick<string>('gateType') ?? 'NOT');
+      const family = pick<string>('family');
+      switch (gateType) {
+        case 'AND':  return new components.ANDGate(family);
+        case 'OR':   return new components.ORGate(family);
+        case 'XOR':  return new components.XORGate(family);
+        case 'NAND': return new components.NANDGate(family);
+        case 'NOR':  return new components.NORGate(family);
+        default:     return new components.NOTGate(family);
+      }
+    }
+
+    case ComponentType.LogicHigh: return new components.LogicHigh();
+    case ComponentType.LogicLow:  return new components.LogicLow();
+    case ComponentType.Clock:
+      return new components.ClockSource(value, pick<number>('dutyCycle'));
+
+    default:
+      throw new Error(
+        `dbToSchematic: unknown component type "${record.type}" (id ${record.id}). ` +
+        'Add a case to instantiateComponent() or remove the component from the DB.',
+      );
+  }
+}
+
+/**
+ * Rebuild a live {@link Schematic} from a {@link WireScriptDb}.
+ *
+ * This is the inverse of {@link compileDslToDb} and closes the DB round-trip:
+ * everything downstream — ERC, netlist export, the CLI — can now start from a
+ * stored DB without going through generated source code.
+ *
+ * Component ids, labels, pin ids and node ids are preserved, so
+ * `compileDslToDb(dbToSchematic(db))` reproduces `db`.
+ *
+ * @throws If a component's type has no known constructor.
+ *
+ * @example
+ * const db = deserializeDb(await fs.readFile('circuit.json', 'utf-8'));
+ * const schematic = dbToSchematic(db);
+ * console.log(schematic.erc().report());
+ */
+export function dbToSchematic(db: WireScriptDb): Schematic {
+  const schematic = new Schematic(db.name ?? 'unnamed');
+
+  // `isGround` is derived on serialization from the Ground component sitting on
+  // the net, so it only needs re-asserting through the node name when this DB
+  // has no Ground component to carry it.
+  const groundIsCarriedByComponent = (db.components ?? [])
+    .some(c => resolveComponentType(c) === ComponentType.Ground);
+
+  // Nodes first, so pins have something to attach to.
+  const nodesById = new Map<string, Node>();
+  for (const record of db.nodes ?? []) {
+    const name = record.name
+      ?? (record.isGround && !groundIsCarriedByComponent ? 'GND' : undefined);
+    const node = new Node(name);
+    applyNodeIdentity(node, record.id);
+    nodesById.set(record.id, node);
+    schematic.addNode(node);
+  }
+
+  for (const record of db.components ?? []) {
+    const component = instantiateComponent(record);
+
+    // Restore any serialized param that the constructor did not reproduce, so
+    // hand-edited DB values survive the trip.
+    //
+    // A `value` of 0 alongside a model is a placeholder, not a measurement — a
+    // SPICE netlist names the part (`Q1 c b e 2N2222`) but carries no hfe, so
+    // the model's own default must win.
+    const hasModel = (record.params as Record<string, unknown> | undefined)?.model !== undefined
+      || (record.extras as Record<string, unknown> | undefined)?.model !== undefined;
+    const derivedValue = component.params.value;
+
+    for (const [key, value] of Object.entries(record.params ?? {})) {
+      if (key === 'value' && value === 0 && hasModel && derivedValue !== 0) continue;
+      (component.params as Record<string, unknown>)[key] = value;
+    }
+
+    applyComponentIdentity(component, {
+      id: record.id,
+      label: record.label,
+      pinIds: Object.fromEntries(
+        record.pins.filter(p => p.id).map(p => [p.name, p.id]),
+      ),
+    });
+
+    for (const pinRecord of record.pins) {
+      if (!pinRecord.nodeId) continue;
+      const pin = component.getPin(pinRecord.name);
+      if (!pin) continue;
+      let node = nodesById.get(pinRecord.nodeId);
+      if (!node) {
+        // A pin referencing a node the DB never declared — materialise it
+        // rather than dropping the connection.
+        node = new Node();
+        applyNodeIdentity(node, pinRecord.nodeId);
+        nodesById.set(pinRecord.nodeId, node);
+        schematic.addNode(node);
+      }
+      schematic.connect(pin, node);
+    }
+
+    schematic.addComponent(component);
+  }
+
+  return schematic;
+}
+
+/** Alias for {@link dbToSchematic}. */
+export const db2schematic = dbToSchematic;

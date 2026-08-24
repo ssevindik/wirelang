@@ -27,6 +27,9 @@ export { NPNTransistor, NPN, PNPTransistor, PNP, type BJTParams } from './BJT';
 // Transistors - MOSFET
 export { NMOSTransistor, NMOS, PMOSTransistor, PMOS, type MOSFETParams } from './MOSFET';
 
+// Transistors - JFET
+export { NJFETTransistor, NJFET, PJFETTransistor, PJFET, type JFETParams } from './JFET';
+
 // Analog ICs
 export { OpAmpComponent, OpAmp3Component, OpAmp, OpAmp3, LM741, TL072, NE5532, LM358, type OpAmpParams } from './OpAmp';
 

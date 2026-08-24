@@ -104,9 +104,12 @@ describe('Schematic', () => {
     const s = createSchematic('test');
     const r = R(100);
     s.addComponent(r);
-    
+
     const result = s.validate();
-    expect(result.warnings.length).toBeGreaterThan(0); // Unconnected pins
+    // validate() delegates to ERC, which treats an unconnected pin as an error:
+    // a terminal wired to nothing means no current can flow through it.
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('ERC_UNCONNECTED_PIN'))).toBe(true);
   });
 });
 
@@ -302,13 +305,27 @@ describe('Circuit Validation', () => {
     expect(result.errors.length).toBe(0);
   });
 
-  it('should warn about missing ground', () => {
+  it('should report a missing ground reference', () => {
     const s = createSchematic('No Ground');
     s.addComponent(R(100));
     s.addComponent(DC(5));
-    
+
     const result = s.validate();
-    expect(result.warnings.some(w => w.includes('ground'))).toBe(true);
+    // Without a 0V reference every node voltage is undefined — an error, not
+    // a warning, in every ERC preset.
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('ERC_NO_GROUND'))).toBe(true);
+  });
+
+  it('validate() agrees with erc()', () => {
+    const s = createSchematic('No Ground');
+    s.addComponent(R(100));
+
+    const legacy = s.validate();
+    const erc = s.erc();
+    expect(legacy.valid).toBe(erc.passed);
+    expect(legacy.errors).toHaveLength(erc.errors.length);
+    expect(legacy.warnings).toHaveLength(erc.warnings.length);
   });
 
   it('should report component validation errors', () => {

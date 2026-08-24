@@ -29,6 +29,19 @@ export class Ground extends Component {
     return this.pins[0];
   }
 
+  /** Alias for the ground pin. */
+  get p1(): Pin {
+    return this.pins[0];
+  }
+
+  /**
+   * Ground has one terminal, so `p2` is the same pin. Without this a `GND()`
+   * placed mid-chain in `Series()` would read `pins[1]` and get `undefined`.
+   */
+  get p2(): Pin {
+    return this.pins[0];
+  }
+
   /**
    * Get or create the ground node
    */

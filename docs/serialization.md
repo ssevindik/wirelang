@@ -140,12 +140,43 @@ export const ledCircuit = s;
 
 ---
 
+## `dbToSchematic(db)` — DB → the live IR
+
+The inverse of `compileDslToDb`. Rebuilds a working `Schematic` — components,
+nodes and connections — so anything downstream can start from a stored DB.
+
+```ts
+import { deserializeDb, dbToSchematic, runERC } from '@ssevindikx/wirescript';
+
+const db = deserializeDb(await fs.readFile('circuit.json', 'utf-8'));
+const schematic = dbToSchematic(db);
+
+console.log(schematic.erc().report());
+console.log(schematic.getSummary());
+```
+
+Component ids, labels, pin ids and node ids are preserved, so the round-trip is
+lossless:
+
+```ts
+compileDslToDb(dbToSchematic(db))   // deep-equals db
+```
+
+Throws if a record's `type` has no known constructor — a silently dropped
+component would be worse than a loud failure.
+
+> **Before 0.5.0** there was no way back to the live IR. The CLI reached it by
+> generating DSL source and evaluating it; `dbToSchematic` removes that step.
+
+---
+
 ## Aliases
 
 ```ts
-// All four aliases are equivalent:
+// All equivalent:
 import { compileDslToDb, dslToDb, dsl2db }   from '@ssevindikx/wirescript'; // DSL → DB
-import { reverseDbToDsl, dbToDsl, db2dsl }   from '@ssevindikx/wirescript'; // DB → DSL
+import { reverseDbToDsl, dbToDsl, db2dsl }   from '@ssevindikx/wirescript'; // DB → DSL code
+import { dbToSchematic, db2schematic }       from '@ssevindikx/wirescript'; // DB → Schematic
 ```
 
 ---

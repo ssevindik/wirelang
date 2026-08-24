@@ -149,27 +149,55 @@ export class Schematic {
   }
 
   /**
-   * Validate the circuit topology and component values
+   * Validate the circuit, as flat strings.
+   *
+   * This is a thin view over {@link Schematic.erc}: one engine decides what is
+   * wrong, and this formats the result into the legacy `{ valid, errors,
+   * warnings }` shape. ERC `info` findings are omitted — they are design notes,
+   * not validation failures.
+   *
+   * Prefer `erc()` for new code: it reports the affected components, nodes and
+   * pins, tells you how to fix each finding, and lets you tune severity.
+   *
+   * @example
+   * const { valid, errors } = circuit.validate();
+   * // richer equivalent:
+   * const result = circuit.erc();
    */
   validate(): SchematicValidationResult {
+    // ERC is registered by importing the erc module, which core/index.ts always
+    // does. Fall back to the structural checks if a caller reached Schematic
+    // directly without it.
+    if (!Schematic._ercRunner) {
+      return this.validateStructurally();
+    }
+
+    const result = Schematic._ercRunner(this);
+    const format = (v: { ruleId: string; message: string }) => `[${v.ruleId}] ${v.message}`;
+
+    return {
+      valid: result.errors.length === 0,
+      errors: result.errors.map(format),
+      warnings: result.warnings.map(format),
+    };
+  }
+
+  /**
+   * The pre-ERC structural checks, kept as a fallback for when the ERC engine
+   * has not been loaded.
+   */
+  private validateStructurally(): SchematicValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // Validate each component
     for (const component of this._components) {
-      const componentErrors = component.validate();
-      errors.push(...componentErrors);
+      errors.push(...component.validate());
     }
 
-    // Check for unconnected pins
-    const unconnectedPins = this.getUnconnectedPins();
-    if (unconnectedPins.length > 0) {
-      for (const pin of unconnectedPins) {
-        warnings.push(`Unconnected pin: ${pin.name}`);
-      }
+    for (const pin of this.getUnconnectedPins()) {
+      errors.push(`Unconnected pin: ${pin.fullName}`);
     }
 
-    // Check for isolated nodes (nodes with only one pin)
     for (const node of this._nodes) {
       const pinsAtNode = this.getPinsAtNode(node);
       if (pinsAtNode.length === 1 && !node.isGround()) {
@@ -177,23 +205,17 @@ export class Schematic {
       }
     }
 
-    // Check if circuit has at least one component
     if (this._components.length === 0) {
       errors.push('Circuit has no components');
     }
 
-    // Check for ground reference
-    const hasGround = this._nodes.some(n => n.isGround()) || 
-                      this._components.some(c => c.type === 'ground');
+    const hasGround = this._nodes.some(n => n.isGround()) ||
+                      this._components.some(c => c.type === ComponentType.Ground);
     if (!hasGround) {
-      warnings.push('Circuit has no ground reference');
+      errors.push('Circuit has no ground reference');
     }
 
-    return {
-      valid: errors.length === 0,
-      errors,
-      warnings,
-    };
+    return { valid: errors.length === 0, errors, warnings };
   }
 
   /**
