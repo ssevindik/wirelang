@@ -309,10 +309,16 @@ export const supplyShort: ERCRule = {
       // `potential` is forced to 0 by the ground symbol, so the rail voltage
       // is read from `suppliedPotential`.
       if (net.isGround) {
+        // Only a supply that forces a specific non-zero potential can short a
+        // rail to ground. A current source asserts a current, not a voltage —
+        // its return terminal sitting on ground is exactly how it is used.
         const rails = net.pins
           .map(p => ctx.componentOf(p))
-          .filter((c): c is Component =>
-            !!c && SUPPLY_TYPES.has(c.type) && railPotential(c, net) !== 0);
+          .filter((c): c is Component => {
+            if (!c || !SUPPLY_TYPES.has(c.type)) return false;
+            const potential = railPotential(c, net);
+            return potential !== undefined && potential !== 0;
+          });
         if (rails.length === 0) continue;
         const key = `direct:${net.id}`;
         if (seen.has(key)) continue;

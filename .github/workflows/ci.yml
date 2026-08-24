@@ -46,7 +46,7 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: ERC over the example circuits
+      - name: ERC over the example circuits (strict)
         run: npm run erc:examples
 
       - name: Rule catalogue is readable

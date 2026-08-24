@@ -1,6 +1,6 @@
 {
   "name": "@ssevindikx/wirescript",
-  "version": "0.5.0",
+  "version": "1.0.0-rc.1",
   "description": "A code-first DSL for describing electronic circuits",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,7 +22,8 @@
     "wirescript": "./dist/cli.js"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "tag": "next"
   },
   "files": [
     "dist",
@@ -44,9 +45,14 @@
   },
   "keywords": [
     "circuit",
-    "dsl",
     "electronics",
-    "eda"
+    "eda",
+    "dsl",
+    "schematic",
+    "erc",
+    "spice",
+    "netlist",
+    "typescript"
   ],
   "author": "Samet Sevindik",
   "license": "MIT",
@@ -55,5 +61,16 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ssevindikx/wirescript.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ssevindikx/wirescript/issues"
+  },
+  "homepage": "https://github.com/ssevindikx/wirescript#readme",
+  "engines": {
+    "node": ">=20"
   }
 }

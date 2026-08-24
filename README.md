@@ -2,9 +2,9 @@
 
 A **code-first DSL** for describing electronic circuits in TypeScript.
 
-> **0.5.0 — the breaking window before 1.0.** The public API is settling. See
-> [CHANGELOG.md](./CHANGELOG.md) for what changed and the
-> [versioning policy](#versioning-policy) for what stability will mean at 1.0.
+> **1.0.0-rc.1 — API frozen.** Nothing in the public surface changes between this
+> tag and 1.0.0. Install it with `npm i @ssevindikx/wirescript@next`. See the
+> [changelog](./CHANGELOG.md) and the [versioning policy](#versioning-policy).
 
 ---
 
@@ -83,6 +83,7 @@ Circuit('BJT Switch', [
 | [CLI](./docs/cli.md) | Command-line interface |
 | [Examples](./docs/examples.md) | 12 ready-to-run circuit examples |
 | [Changelog](./CHANGELOG.md) | What changed in each release, and how to migrate |
+| [Full reference](https://claude.ai/code/artifact/2c1d3d96-c24c-4502-ae1b-3f3944e262a4) | Everything on one page — components, rules, formats, CLI |
 
 ---
 
@@ -98,7 +99,7 @@ Circuit('BJT Switch', [
 - **Interoperability** — SPICE netlists, `.ws` DSL files, JSON/CSV DB. Every format
   round-trips back to the live IR through `dbToSchematic()`.
 - **CLI** — `wirescript convert` / `compile` / `decompile` / `erc` / `rules`
-- **390 tests** passing
+- **529 tests** passing
 
 ## Validate from the shell
 
@@ -143,6 +144,15 @@ wirescript erc circuit.ws --preset relaxed --off missingDecoupling
 
 Pre-1.0 releases (`0.x`) may break anything; the changelog says what and how to
 migrate.
+
+### What backs the 1.0 claims
+
+| Gate | What it proves |
+|---|---|
+| `tests/api-surface.test.ts` | The exact set of 172 public exports; removing one fails the build |
+| `tests/round-trip.test.ts` | Every component type survives all five conversion paths, with a coverage test that fails if a new type is added without an entry |
+| `npm run erc:examples` | Every shipped example circuit passes ERC at `--preset strict` |
+| CI on Node 20 / 22 / 24 | Typecheck, build, 529 tests, and the ERC gate |
 
 ---
 

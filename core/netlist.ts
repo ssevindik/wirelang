@@ -77,6 +77,9 @@ function isSpiceNumericValue(token: string): boolean {
   return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?(T|G|MEG|K|MIL|M|U|N|P|F)?$/i.test(token.trim());
 }
 
+/** Forward voltage assumed for a diode imported by part number alone. */
+const DIODE_DEFAULT_VF = 0.7;
+
 /** Open-loop gain assumed for an op-amp imported from a netlist. */
 const OPAMP_DEFAULT_GAIN = 100000;
 
@@ -652,12 +655,21 @@ function buildDbFromElements(elements: SpiceElement[], name: string): WireScript
     // Extras
     const extras: Record<string, unknown> = { ...extrasSeed };
 
-    // `Q1 c b e 2N2222` — the trailing token names the part, where other
-    // elements carry a numeric value. Keep it as the model and leave the
-    // electrical parameters to that model's defaults.
-    if (SPICE_TRANSISTOR_TYPES.has(el.type) && el.value && !isSpiceNumericValue(el.value)) {
+    // `Q1 c b e 2N2222`, `D1 a c 1N4148` — the trailing token names the part,
+    // where other elements carry a numeric value. Keep it, and leave the
+    // electrical parameters to that part's defaults.
+    const namesAPart = el.value && !isSpiceNumericValue(el.value);
+
+    if (SPICE_TRANSISTOR_TYPES.has(el.type) && namesAPart) {
       extras.model = el.value;
       params.value = 0;   // placeholder: dbToSchematic defers to the model
+    }
+
+    if ((el.type === ComponentType.Diode || el.type === ComponentType.LED) && namesAPart) {
+      extras.partNumber = el.value;
+      // The forward voltage rides along in the trailing `; <Vf>` comment, which
+      // the parser strips, so fall back to the silicon default.
+      params.value = DIODE_DEFAULT_VF;
     }
     if (el.model && el.model !== el.value) {
       extras.model = el.model;

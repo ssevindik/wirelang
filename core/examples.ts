@@ -106,17 +106,23 @@ export function rcLowPassFilter(): Schematic {
 
 export function lcTankCircuit(): Schematic {
   const s = createSchematic('LC Tank');
-  
+
+  // f0 = 1 / (2π√(LC)) ≈ 1.59 kHz for 10 mH ∥ 1 µF.
+  //
+  // The source resistance has to survive DC as well as resonance: an ideal
+  // inductor is a short at DC, so the whole supply sits across R. At 1 kΩ that
+  // is 12 mA and 144 mW — within a quarter-watt part. At 100 Ω it would be
+  // 120 mA and 1.44 W, which ERC reports as ERC_POWER_DISSIPATION.
   const result = Series(
-    DC(12),
-    R(100),  // Current limiting resistor
+    AC(12, kHz(1.59)),
+    R(kOhm(1)),
     Parallel(
       L(mH(10)),
       C(uF(1))
     ),
     GND()
   );
-  
+
   applyToCircuit(s, result);
   s.autoConnectGrounds();
   return s;
@@ -225,8 +231,11 @@ export function simpleResistorCircuit(): Schematic {
 // =============================================================================
 
 export function rcFilterDemo(): Schematic {
+  // A filter needs a signal to filter. Driving it from DC leaves the capacitor
+  // blocking the only return path, so there is no DC operating point at all —
+  // ERC_NO_LOAD. f_c = 1 / (2πRC) ≈ 16 Hz.
   return Circuit('RC Filter',
-    DC(5),
+    AC(5, 100),
     R(kOhm(10)),
     C(uF(1)),
     GND()

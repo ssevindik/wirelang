@@ -8,6 +8,59 @@ as scoped in [Versioning policy](./README.md#versioning-policy).
 
 ---
 
+## [1.0.0-rc.1] — Unreleased
+
+**API freeze.** Nothing in the public surface changes between this tag and
+`1.0.0`. What ships here is what 1.0 promises to keep stable — see
+[Versioning policy](./README.md#versioning-policy).
+
+Published to npm under the `next` tag, so `npm install @ssevindikx/wirescript`
+keeps resolving to the last stable release. Install the candidate explicitly:
+
+```sh
+npm install @ssevindikx/wirescript@next
+```
+
+### Proof gates
+
+These now run in CI on every push, and are the evidence behind the 1.0 claims:
+
+- **529 tests**, across 16 files.
+- **Round-trip matrix** (`tests/round-trip.test.ts`) — every one of the 17
+  non-deprecated component types, through all five conversion paths:
+  DB, JSON, CSV, `.ws` and SPICE. A coverage test fails the build if a new
+  `ComponentType` is added without an entry.
+- **API surface** (`tests/api-surface.test.ts`) — the exact list of 172 public
+  exports. Removing or renaming one fails the build.
+- **Example circuits pass `--preset strict`**, the strictest ERC profile, not
+  just the default.
+
+### Fixed
+
+- `ERC_SUPPLY_SHORT` no longer fires on every current source. A current source
+  asserts a current, not a voltage, so its return terminal sitting on the ground
+  net is exactly how it is used — the rule now requires a supply forcing a known
+  non-zero potential.
+- A diode's part number survives SPICE. `D1 a c 1N4148` had its part number
+  parsed as a forward voltage, losing `1N4148` and setting Vf to a nonsense
+  value.
+
+### Changed
+
+- Two example circuits were electrically unsound and only passed because ERC was
+  lenient about them:
+  - **LC tank** drove a parallel LC through 100 Ω from DC. An ideal inductor is a
+    short at DC, so the full supply sat across the resistor — 120 mA and 1.44 W
+    in a quarter-watt part. Now an AC source at the 1.59 kHz resonance through
+    1 kΩ (12 mA, 144 mW).
+  - **RC filter demo** was driven from DC, so the series capacitor left it with
+    no DC operating point at all. Now driven from AC, which is what a filter is
+    for.
+- `package.json` declares `engines.node >= 20`, a repository, and the
+  `next` dist-tag for pre-releases.
+
+---
+
 ## [0.5.0] — Unreleased
 
 The breaking window before `1.0.0-rc.1`. Every change that would force a major
