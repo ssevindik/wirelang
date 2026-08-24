@@ -4,7 +4,7 @@
  */
 
 import { Component } from '../Component';
-import { ComponentType } from '../types';
+import { ComponentType, PinDirection, PinType } from '../types';
 import { Pin } from '../Pin';
 import { Node, createGroundNode } from '../Node';
 
@@ -19,7 +19,7 @@ export class Ground extends Component {
   }
 
   protected createPins(): Pin[] {
-    return [new Pin('gnd')];
+    return [new Pin('gnd', PinDirection.Output, PinType.PowerOut)];
   }
 
   /**

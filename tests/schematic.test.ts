@@ -23,6 +23,7 @@ import {
   Circuit,
 } from '../core/dsl';
 import { kOhm, uF } from '../core/units';
+import { runERC } from '../core/erc';
 
 describe('Schematic', () => {
   beforeEach(() => {
@@ -218,6 +219,35 @@ describe('DSL Functions', () => {
       applyToCircuit(s, result);
       
       expect(s.components.length).toBe(4); // DC, R1, R2, GND
+    });
+
+    it('wires the parallel block into the series chain', () => {
+      // Regression: Series() used to move a ConnectionResult's virtual
+      // terminals onto a fresh node, silently orphaning the whole block.
+      const src = DC(9);
+      const r1 = R(kOhm(1));
+      const r2 = R(kOhm(2));
+      const gnd = GND();
+      const s = createSchematic('Nested');
+      applyToCircuit(s, Series(src, Parallel(r1, r2), gnd));
+
+      // Both resistors still share their own two nodes.
+      expect(r1.p1.node).toBe(r2.p1.node);
+      expect(r1.p2.node).toBe(r2.p2.node);
+
+      // And that pair of nodes is what the source and ground attach to.
+      expect(src.positive.node).toBe(r1.p1.node);
+      expect(gnd.gnd.node).toBe(r1.p2.node);
+    });
+
+    it('a nested Parallel circuit passes ERC', () => {
+      const circuit = Circuit('Divider',
+        DC(9),
+        Parallel(R(kOhm(1)), R(kOhm(2))),
+        GND(),
+      );
+      const result = runERC(circuit);
+      expect(result.errors.map(e => e.message), result.report()).toEqual([]);
     });
   });
 

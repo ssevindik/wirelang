@@ -4,7 +4,7 @@
  */
 
 import { Component } from '../Component';
-import { ComponentType, PinDirection } from '../types';
+import { ComponentType, PinDirection, PinType } from '../types';
 import { Pin } from '../Pin';
 
 export interface OpAmpParams {
@@ -35,7 +35,7 @@ export class OpAmpComponent extends Component {
       ? { partNumber: params } 
       : params;
     
-    super('opamp' as ComponentType, {
+    super(ComponentType.OpAmp, {
       value: normalized.gain ?? 100000,
       unit: 'V/V',
       partNumber: normalized.partNumber ?? 'Generic',
@@ -47,11 +47,11 @@ export class OpAmpComponent extends Component {
 
   protected createPins(): Pin[] {
     return [
-      new Pin('inP', PinDirection.Input),    // Non-inverting (+)
-      new Pin('inN', PinDirection.Input),    // Inverting (-)
-      new Pin('out', PinDirection.Output),   // Output
-      new Pin('vPos', PinDirection.Input),   // V+ supply
-      new Pin('vNeg', PinDirection.Input),   // V- supply
+      new Pin('inP', PinDirection.Input, PinType.Input),      // Non-inverting (+)
+      new Pin('inN', PinDirection.Input, PinType.Input),      // Inverting (-)
+      new Pin('out', PinDirection.Output, PinType.Output),    // Output
+      new Pin('vPos', PinDirection.Input, PinType.PowerIn),   // V+ supply
+      new Pin('vNeg', PinDirection.Input, PinType.PowerIn),   // V- supply
     ];
   }
 
@@ -119,7 +119,7 @@ export class OpAmp3Component extends Component {
       ? { partNumber: params } 
       : params;
     
-    super('opamp' as ComponentType, {
+    super(ComponentType.OpAmp, {
       value: normalized.gain ?? 100000,
       unit: 'V/V',
       partNumber: normalized.partNumber ?? 'Generic',
@@ -131,9 +131,9 @@ export class OpAmp3Component extends Component {
 
   protected createPins(): Pin[] {
     return [
-      new Pin('inP', PinDirection.Input),    // Non-inverting (+)
-      new Pin('inN', PinDirection.Input),    // Inverting (-)
-      new Pin('out', PinDirection.Output),   // Output
+      new Pin('inP', PinDirection.Input, PinType.Input),    // Non-inverting (+)
+      new Pin('inN', PinDirection.Input, PinType.Input),    // Inverting (-)
+      new Pin('out', PinDirection.Output, PinType.Output),  // Output
     ];
   }
 

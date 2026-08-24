@@ -423,6 +423,20 @@ function buildDbFromElements(elements: SpiceElement[], name: string): WireScript
     });
   }
 
+  // SPICE writes ground as net 0 with no symbol of its own. Re-materialise a
+  // Ground component so the imported circuit carries an explicit 0V reference
+  // — without it, ERC on a round-tripped netlist reports ERC_NO_GROUND.
+  const groundNode = nodes.find(n => n.isGround);
+  if (groundNode && !components.some(c => c.type === ComponentType.Ground)) {
+    components.push({
+      id: `comp_gnd_${compIdx++}`,
+      type: ComponentType.Ground,
+      label: 'GND1',
+      params: { value: 0, unit: 'V' },
+      pins: [{ id: `pin_${pinIdx++}`, name: 'gnd', nodeId: groundNode.id }],
+    });
+  }
+
   return {
     schema: 'wirescript-db@v1',
     name,

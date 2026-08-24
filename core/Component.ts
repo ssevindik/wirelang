@@ -62,8 +62,10 @@ export abstract class Component {
       case ComponentType.VoltageSource: return 'V';
       case ComponentType.CurrentSource: return 'I';
       case ComponentType.Ground: return 'GND';
+      case ComponentType.BJT:
       case ComponentType.NPN:
       case ComponentType.PNP: return 'Q';  // BJT
+      case ComponentType.MOSFET:
       case ComponentType.NMOS:
       case ComponentType.PMOS:
       case ComponentType.NJFET:

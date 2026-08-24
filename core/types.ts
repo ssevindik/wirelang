@@ -28,6 +28,9 @@ export enum ComponentType {
   OpAmp = 'opamp',
   // Logic Gates
   LogicGate = 'logic_gate',
+  LogicHigh = 'logic_high',
+  LogicLow = 'logic_low',
+  Clock = 'clock',
 }
 
 export enum SourceType {
@@ -39,6 +42,37 @@ export enum PinDirection {
   Input = 'input',
   Output = 'output',
   Bidirectional = 'bidirectional',
+}
+
+/**
+ * Electrical type of a pin.
+ *
+ * `PinDirection` describes *signal flow*; `PinType` describes what the pin
+ * does electrically. ERC reasons about `PinType`, because a voltage source's
+ * negative terminal flows "in" but is still a power output, and a resistor
+ * terminal has no direction at all.
+ */
+export enum PinType {
+  /** Consumes power, must be driven by a PowerOut on the same net (OpAmp V+/V-). */
+  PowerIn = 'power_in',
+  /** Supplies power / defines a potential (VCC, GND, battery terminals). */
+  PowerOut = 'power_out',
+  /** Signal input — needs a driver on its net (logic gate A/B, OpAmp inP/inN). */
+  Input = 'input',
+  /** Signal output — drives its net (logic gate Y, OpAmp out). */
+  Output = 'output',
+  /** Can drive or be driven (bus pins). */
+  Bidirectional = 'bidirectional',
+  /** Open-collector / open-drain output — may share a net with other OC pins. */
+  OpenCollector = 'open_collector',
+  /** Tri-state output — may share a net with other tri-state pins. */
+  TriState = 'tri_state',
+  /** No electrical direction (resistor, capacitor, diode, transistor terminals). */
+  Passive = 'passive',
+  /** Must be left unconnected. */
+  NoConnect = 'no_connect',
+  /** Unknown — ERC treats conservatively. */
+  Unspecified = 'unspecified',
 }
 
 /**

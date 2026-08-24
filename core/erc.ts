@@ -1,58 +1,139 @@
 /**
  * WireScript ERC — Electrical Rule Check
  *
- * Statically validates circuit topology and electrical constraints
- * without requiring full SPICE simulation.
+ * Statically validates circuit topology and electrical constraints without
+ * running a SPICE simulation.
  *
  * Severity levels:
- *   ERROR   — circuit will not function / physically dangerous
- *   WARNING — may malfunction under certain conditions
- *   INFO    — design quality observation
+ *   error   — the circuit will not work, or hardware will be damaged
+ *   warning — may misbehave, or violates a datasheet limit
+ *   info    — design-quality observation
  *
  * Usage:
  *   import { runERC } from '@ssevindikx/wirescript';
  *   const result = runERC(schematic);
- *   console.log(result.summary());
+ *   console.log(result.report());
  */
 
-import { Component } from './Component';
-import { Node } from './Node';
-import { Pin } from './Pin';
 import { Schematic } from './Schematic';
-import { ComponentType, PinDirection } from './types';
+import { ERCContext } from './erc-model';
+import { DEVICE_RULES } from './erc-rules-device';
+import { TOPOLOGY_RULES } from './erc-rules-topology';
+import {
+  ERCFinding,
+  ERCOptions,
+  ERCPreset,
+  ERCRule,
+  ERCRuleKey,
+  ERCRuleSet,
+  ERCSeverity,
+  ERCSeverityOverride,
+  ERCViolation,
+  ResolvedERCOptions,
+} from './erc-types';
+
+export type {
+  ERCFinding,
+  ERCOptions,
+  ERCPreset,
+  ERCRule,
+  ERCRuleKey,
+  ERCRuleSet,
+  ERCSeverity,
+  ERCSeverityMap,
+  ERCSeverityOverride,
+  ERCViolation,
+  ResolvedERCOptions,
+} from './erc-types';
+
+export {
+  ERCContext,
+  type Net,
+  type NetKind,
+  type SupplyPath,
+  type SeriesElement,
+  seriesElementOf,
+  limitsCurrent,
+} from './erc-model';
 
 // ─────────────────────────────────────────────────────────────
-// Public Types
+// Rule registry
 // ─────────────────────────────────────────────────────────────
 
-export type ERCSeverity = 'error' | 'warning' | 'info';
+/** Every rule the ERC engine knows about, in report order. */
+export const ERC_RULES: readonly ERCRule[] = Object.freeze([
+  ...TOPOLOGY_RULES,
+  ...DEVICE_RULES,
+]);
 
-export interface ERCViolation {
-  /** Unique rule identifier e.g. "ERC_SHORT_CIRCUIT" */
-  ruleId: string;
-  /** Human-readable rule name */
-  ruleName: string;
-  /** Severity */
-  severity: ERCSeverity;
-  /** Detailed diagnostic message */
-  message: string;
-  /** Affected components */
-  components: Component[];
-  /** Affected nodes */
-  nodes: Node[];
-  /** Affected pins */
-  pins: Pin[];
+const RULES_BY_KEY = new Map<string, ERCRule>();
+for (const rule of ERC_RULES) {
+  RULES_BY_KEY.set(rule.key, rule);
+  RULES_BY_KEY.set(rule.id, rule);
 }
+
+/** Look up a rule by its key (`'shortCircuit'`) or id (`'ERC_SHORT_CIRCUIT'`). */
+export function getERCRule(keyOrId: string): ERCRule | undefined {
+  return RULES_BY_KEY.get(keyOrId);
+}
+
+/** Machine-readable catalogue of every rule, for docs and tooling. */
+export function listERCRules(): Array<{
+  key: ERCRuleKey;
+  id: string;
+  name: string;
+  description: string;
+  severity: Record<ERCPreset, ERCSeverityOverride>;
+}> {
+  return ERC_RULES.map(r => ({
+    key: r.key,
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    severity: { ...r.severity },
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Result
+// ─────────────────────────────────────────────────────────────
+
+const SEVERITY_ICON: Record<ERCSeverity, string> = {
+  error: '🔴',
+  warning: '🟡',
+  info: '🔵',
+};
+
+const SEVERITY_ORDER: Record<ERCSeverity, number> = {
+  error: 0,
+  warning: 1,
+  info: 2,
+};
 
 export class ERCResult {
   readonly violations: ERCViolation[];
+  /** Options actually used for this run, with defaults resolved. */
+  readonly options: ResolvedERCOptions;
 
-  constructor(violations: ERCViolation[]) {
+  constructor(violations: ERCViolation[], options?: ResolvedERCOptions) {
     this.violations = violations;
+    this.options = options ?? {
+      fanOutLimit: 10,
+      resistorPowerRating: 0.25,
+      defaultLogicSupply: 5,
+      defaultDiodeCurrent: 0.02,
+      preset: 'balanced',
+    };
   }
 
+  /** True when no `error`-severity violation was reported. */
   get passed(): boolean {
     return this.errors.length === 0;
+  }
+
+  /** True when there is nothing to report at all. */
+  get clean(): boolean {
+    return this.violations.length === 0;
   }
 
   get errors(): ERCViolation[] {
@@ -67,6 +148,28 @@ export class ERCResult {
     return this.violations.filter(v => v.severity === 'info');
   }
 
+  /** All violations of one rule, by key or `ERC_*` id. */
+  byRule(keyOrId: string): ERCViolation[] {
+    return this.violations.filter(
+      v => v.ruleKey === keyOrId || v.ruleId === keyOrId,
+    );
+  }
+
+  /** True when the named rule reported at least one violation. */
+  has(keyOrId: string): boolean {
+    return this.byRule(keyOrId).length > 0;
+  }
+
+  /** Counts by severity. */
+  get counts(): Record<ERCSeverity, number> {
+    return {
+      error: this.errors.length,
+      warning: this.warnings.length,
+      info: this.infos.length,
+    };
+  }
+
+  /** One-line-per-violation summary. */
   summary(): string {
     if (this.violations.length === 0) {
       return '✅ ERC passed — no violations found.';
@@ -76,673 +179,165 @@ export class ERCResult {
       '',
     ];
     for (const v of this.violations) {
-      const icon = v.severity === 'error' ? '🔴' : v.severity === 'warning' ? '🟡' : '🔵';
-      lines.push(`${icon} [${v.ruleId}] ${v.message}`);
+      lines.push(`${SEVERITY_ICON[v.severity]} [${v.ruleId}] ${v.message}`);
     }
     return lines.join('\n');
   }
-}
 
-export interface ERCRuleSet {
-  /** V+/V- of same source on same node */
-  shortCircuit?: boolean;
-  /** Two output-capable pins driving same node */
-  outputConflict?: boolean;
-  /** Input pin with no driver on its net */
-  floatingInput?: boolean;
-  /** OpAmp power pins (vPos/vNeg) unconnected */
-  missingPowerPin?: boolean;
-  /** Diode/LED connected with reversed polarity */
-  reversePolarity?: boolean;
-  /** Two power sources at different voltages on same node */
-  powerConflict?: boolean;
-  /** Logic gate output drives more inputs than fanOutLimit */
-  fanOut?: boolean;
-  /** No ground reference in circuit */
-  noGround?: boolean;
-  /** LED directly across supply with no current-limiting element */
-  noCurrentLimit?: boolean;
-  /** Component voltage rating exceeded by estimated supply */
-  voltageExceeded?: boolean;
-  /** Analog output driving digital input or vice-versa */
-  driverConflict?: boolean;
-  /** Transistor with no base/gate drive (unconnected control pin) */
-  transistorNoDrive?: boolean;
-}
-
-export interface ERCOptions {
-  rules?: ERCRuleSet;
-  /** Fan-out limit for logic gates (default: 10 for 74HC) */
-  fanOutLimit?: number;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Internal Helpers
-// ─────────────────────────────────────────────────────────────
-
-/** Maps nodeId → all pins connected to that node */
-function buildNodePinMap(schematic: Schematic): Map<string, Pin[]> {
-  const map = new Map<string, Pin[]>();
-  for (const comp of schematic.components) {
-    for (const pin of comp.pins) {
-      if (pin.isConnected() && pin.node) {
-        const id = pin.node.id;
-        if (!map.has(id)) map.set(id, []);
-        map.get(id)!.push(pin);
+  /** Verbose report including fix hints, grouped by severity. */
+  report(): string {
+    if (this.violations.length === 0) {
+      return '✅ ERC passed — no violations found.';
+    }
+    const lines: string[] = [
+      `ERC Result: ${this.errors.length} error(s), ${this.warnings.length} warning(s), ${this.infos.length} info(s)`,
+    ];
+    for (const severity of ['error', 'warning', 'info'] as ERCSeverity[]) {
+      const group = this.violations.filter(v => v.severity === severity);
+      if (group.length === 0) continue;
+      lines.push('', `${SEVERITY_ICON[severity]} ${severity.toUpperCase()}S (${group.length})`);
+      for (const v of group) {
+        lines.push(`  [${v.ruleId}] ${v.message}`);
+        if (v.hint) lines.push(`      ↳ ${v.hint}`);
       }
     }
+    return lines.join('\n');
   }
-  return map;
+
+  /** Plain-object form, for JSON output and tooling. */
+  toJSON(): {
+    passed: boolean;
+    counts: Record<ERCSeverity, number>;
+    violations: Array<{
+      ruleId: string;
+      ruleKey: string;
+      ruleName: string;
+      severity: ERCSeverity;
+      message: string;
+      hint?: string;
+      components: string[];
+      nodes: string[];
+      pins: string[];
+    }>;
+  } {
+    return {
+      passed: this.passed,
+      counts: this.counts,
+      violations: this.violations.map(v => ({
+        ruleId: v.ruleId,
+        ruleKey: v.ruleKey,
+        ruleName: v.ruleName,
+        severity: v.severity,
+        message: v.message,
+        ...(v.hint ? { hint: v.hint } : {}),
+        components: v.components.map(c => c.label),
+        nodes: v.nodes.map(n => n.name ?? n.id),
+        pins: v.pins.map(p => p.fullName),
+      })),
+    };
+  }
 }
 
-/** Component types that limit current (have impedance) */
-const IMPEDANCE_TYPES = new Set<string>([
-  ComponentType.Resistor,
-  ComponentType.Capacitor,
-  ComponentType.Inductor,
-  ComponentType.Diode,
-  ComponentType.LED,
-  ComponentType.BJT,
-  ComponentType.NPN,
-  ComponentType.PNP,
-  ComponentType.MOSFET,
-  ComponentType.NMOS,
-  ComponentType.PMOS,
-  ComponentType.NJFET,
-  ComponentType.PJFET,
-  ComponentType.OpAmp,
-]);
+// ─────────────────────────────────────────────────────────────
+// Runner
+// ─────────────────────────────────────────────────────────────
 
-/** Component types that are power sources (define a voltage) */
-const POWER_SOURCE_TYPES = new Set<string>([
-  ComponentType.VoltageSource,
-  ComponentType.PowerRail,
-  ComponentType.Ground,
-]);
-
-/** Component types that are analog outputs */
-const ANALOG_OUTPUT_TYPES = new Set<string>([
-  ComponentType.VoltageSource,
-  ComponentType.CurrentSource,
-  ComponentType.OpAmp,
-  ComponentType.PowerRail,
-]);
-
-/** Component types that are digital (logic) */
-const DIGITAL_TYPES = new Set<string>([
-  ComponentType.LogicGate,
-]);
-
-/**
- * Estimate the voltage at a node based on directly connected power sources.
- * Returns undefined if unknown (requires simulation).
- */
-function estimateNodeVoltage(
-  node: Node,
-  nodePinMap: Map<string, Pin[]>,
-): number | undefined {
-  if (node.isGround()) return 0;
-  const pins = nodePinMap.get(node.id) ?? [];
-  for (const pin of pins) {
-    const comp = pin.component as Component | null;
-    if (!comp) continue;
-    if (comp.type === ComponentType.Ground) return 0;
-    if (comp.type === ComponentType.PowerRail) return comp.params.value;
-    if (comp.type === ComponentType.VoltageSource && pin.name === 'positive') {
-      return comp.params.value;
-    }
-    if (comp.type === ComponentType.VoltageSource && pin.name === 'negative') {
-      return 0;
-    }
-  }
-  return undefined;
+function resolveOptions(options: ERCOptions): ResolvedERCOptions {
+  return {
+    fanOutLimit: options.fanOutLimit ?? 10,
+    resistorPowerRating: options.resistorPowerRating ?? 0.25,
+    defaultLogicSupply: options.defaultLogicSupply ?? 5,
+    defaultDiodeCurrent: options.defaultDiodeCurrent ?? 0.02,
+    preset: options.preset ?? 'balanced',
+  };
 }
 
 /**
- * BFS: can we reach `endNode` from `startNode` going ONLY through
- * zero-impedance components (power rails, wires — NOT through passives/active)?
- * Returns true if a zero-impedance path exists → potential short circuit.
+ * Decide the severity for a rule, or `null` when it should not run.
  *
- * Note: Ground components are NOT traversed here — a Ground IS an endpoint
- * (the V- of the source should already be on the GND node via autoGround).
- * We only traverse through PowerRail type components, which act as ideal
- * voltage rails with no impedance between instances of the same rail.
+ * Precedence: explicit `severity` override → `rules` on/off flag → preset.
  */
-function hasZeroImpedancePath(
-  startNode: Node,
-  endNode: Node,
-  nodePinMap: Map<string, Pin[]>,
-): boolean {
-  if (startNode.id === endNode.id) return true;
-
-  // Only traverse through PowerRail components (ideal, zero-impedance supplies)
-  // Everything else (R, C, L, Diode, LED, BJT, MOSFET, OpAmp, Ground) blocks traversal
-  const ZERO_IMPEDANCE = new Set<string>([ComponentType.PowerRail]);
-
-  const visited = new Set<string>();
-  const queue: Node[] = [startNode];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (current.id === endNode.id) return true;
-    if (visited.has(current.id)) continue;
-    visited.add(current.id);
-    const pins = nodePinMap.get(current.id) ?? [];
-    for (const pin of pins) {
-      const comp = pin.component as Component | null;
-      if (!comp) continue;
-      if (!ZERO_IMPEDANCE.has(comp.type)) continue;
-      for (const otherPin of (comp as Component).pins) {
-        if (otherPin === pin) continue;
-        if (otherPin.node && !visited.has(otherPin.node.id)) {
-          queue.push(otherPin.node);
-        }
-      }
-    }
+function resolveSeverity(
+  rule: ERCRule,
+  preset: ERCPreset,
+  ruleSet: ERCRuleSet | undefined,
+  severityMap: ERCOptions['severity'],
+): ERCSeverity | null {
+  const override = severityMap?.[rule.key] ?? severityMap?.[rule.id];
+  if (override !== undefined) {
+    return override === 'off' ? null : override;
   }
-  return false;
+
+  const enabled = ruleSet?.[rule.key];
+  if (enabled === false) return null;
+
+  const presetSeverity = rule.severity[preset];
+  if (presetSeverity === 'off') {
+    // An explicit `true` in `rules` re-enables a rule the preset turned off.
+    return enabled === true ? rule.severity.balanced as ERCSeverity : null;
+  }
+  return presetSeverity;
 }
 
-/** Helper to build a violation object */
-function violation(
-  ruleId: string,
-  ruleName: string,
+function toViolation(
+  rule: ERCRule,
   severity: ERCSeverity,
-  message: string,
-  components: Component[] = [],
-  nodes: Node[] = [],
-  pins: Pin[] = [],
+  finding: ERCFinding,
 ): ERCViolation {
-  return { ruleId, ruleName, severity, message, components, nodes, pins };
-}
-
-// ─────────────────────────────────────────────────────────────
-// ERC Rules
-// ─────────────────────────────────────────────────────────────
-
-/**
- * RULE: SHORT_CIRCUIT
- * Detects when the positive and negative terminals of a voltage source
- * are connected via a zero-impedance path (no current-limiting element).
- */
-function checkShortCircuit(
-  schematic: Schematic,
-  nodePinMap: Map<string, Pin[]>,
-): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  const sources = schematic.components.filter(
-    c => c.type === ComponentType.VoltageSource,
-  );
-
-  for (const source of sources) {
-    const posPin = source.pins.find(p => p.name === 'positive');
-    const negPin = source.pins.find(p => p.name === 'negative');
-    if (!posPin?.node || !negPin?.node) continue;
-
-    const posNode = posPin.node;
-    const negNode = negPin.node;
-
-    if (hasZeroImpedancePath(posNode, negNode, nodePinMap)) {
-      results.push(violation(
-        'ERC_SHORT_CIRCUIT',
-        'Short Circuit',
-        'error',
-        `${source.label}: positive and negative terminals are short-circuited (zero-impedance path detected). This will cause infinite current.`,
-        [source],
-        [posNode, negNode],
-        [posPin, negPin],
-      ));
-    }
-  }
-  return results;
+  return {
+    ruleId: rule.id,
+    ruleKey: rule.key,
+    ruleName: rule.name,
+    // A rule may escalate or relax an individual occurrence, but an explicit
+    // user override always wins — that is applied before we get here.
+    severity: finding.severity ?? severity,
+    message: finding.message,
+    ...(finding.hint ? { hint: finding.hint } : {}),
+    components: finding.components ?? [],
+    nodes: finding.nodes ?? [],
+    pins: finding.pins ?? [],
+  };
 }
 
 /**
- * RULE: OUTPUT_CONFLICT
- * Two or more output-direction pins driving the same node.
- * (Wired-OR on CMOS outputs can destroy ICs.)
- */
-function checkOutputConflict(
-  schematic: Schematic,
-  nodePinMap: Map<string, Pin[]>,
-): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  for (const node of schematic.nodes) {
-    const pins = nodePinMap.get(node.id) ?? [];
-    const outputPins = pins.filter(p => p.direction === PinDirection.Output);
-    if (outputPins.length >= 2) {
-      const compLabels = outputPins
-        .map(p => (p.component as Component | null)?.label ?? '?')
-        .join(', ');
-      results.push(violation(
-        'ERC_OUTPUT_CONFLICT',
-        'Output Driver Conflict',
-        'error',
-        `Node ${node.name ?? node.id}: multiple output drivers connected (${compLabels}). This causes bus contention and may damage components.`,
-        outputPins.map(p => p.component as Component).filter(Boolean),
-        [node],
-        outputPins,
-      ));
-    }
-  }
-  return results;
-}
-
-/**
- * RULE: FLOATING_INPUT
- * An input pin's node has NO output-capable driver.
- * A floating input has undefined logic state and is susceptible to noise.
- */
-function checkFloatingInput(
-  schematic: Schematic,
-  nodePinMap: Map<string, Pin[]>,
-): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  for (const comp of schematic.components) {
-    for (const pin of comp.pins) {
-      if (pin.direction !== PinDirection.Input) continue;
-      if (!pin.isConnected() || !pin.node) continue;
-      const nodeId = pin.node.id;
-      const nodePins = nodePinMap.get(nodeId) ?? [];
-      const hasDriver = nodePins.some(
-        p => p.direction === PinDirection.Output || POWER_SOURCE_TYPES.has(
-          (p.component as Component | null)?.type ?? '',
-        ),
-      );
-      if (!hasDriver) {
-        results.push(violation(
-          'ERC_FLOATING_INPUT',
-          'Floating Input',
-          'warning',
-          `${pin.fullName}: input pin has no driver on net "${pin.node.name ?? nodeId}". Undefined voltage level — susceptible to noise pickup.`,
-          [comp],
-          [pin.node],
-          [pin],
-        ));
-      }
-    }
-  }
-  return results;
-}
-
-/**
- * RULE: MISSING_POWER_PIN
- * OpAmp supply pins (vPos / vNeg) are not connected.
- * An unpowered OpAmp will not function.
- */
-function checkMissingPowerPin(schematic: Schematic): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  const opAmps = schematic.components.filter(
-    c => c.type === ComponentType.OpAmp,
-  );
-  for (const op of opAmps) {
-    const vPos = op.pins.find(p => p.name === 'vPos');
-    const vNeg = op.pins.find(p => p.name === 'vNeg');
-    if (vPos && !vPos.isConnected()) {
-      results.push(violation(
-        'ERC_MISSING_POWER_PIN',
-        'Missing Power Pin',
-        'error',
-        `${op.label}: positive supply pin (vPos / V+) is not connected. OpAmp will not operate.`,
-        [op], [], [vPos],
-      ));
-    }
-    if (vNeg && !vNeg.isConnected()) {
-      results.push(violation(
-        'ERC_MISSING_POWER_PIN',
-        'Missing Power Pin',
-        'error',
-        `${op.label}: negative supply pin (vNeg / V-) is not connected. OpAmp will not operate.`,
-        [op], [], [vNeg],
-      ));
-    }
-  }
-  return results;
-}
-
-/**
- * RULE: REVERSE_POLARITY
- * Diode / LED connected with anode at a lower estimated voltage than cathode.
- * A reversed diode blocks forward current; a reversed LED will not light.
- */
-function checkReversePolarity(
-  schematic: Schematic,
-  nodePinMap: Map<string, Pin[]>,
-): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  const polarized = schematic.components.filter(
-    c => c.type === ComponentType.Diode || c.type === ComponentType.LED,
-  );
-  for (const comp of polarized) {
-    const anode = comp.pins.find(p => p.name === 'anode');
-    const cathode = comp.pins.find(p => p.name === 'cathode');
-    if (!anode?.node || !cathode?.node) continue;
-
-    const vAnode = estimateNodeVoltage(anode.node, nodePinMap);
-    const vCathode = estimateNodeVoltage(cathode.node, nodePinMap);
-
-    if (vAnode !== undefined && vCathode !== undefined && vAnode < vCathode) {
-      results.push(violation(
-        'ERC_REVERSE_POLARITY',
-        'Reverse Polarity',
-        'error',
-        `${comp.label}: anode (~${vAnode}V) is at a lower potential than cathode (~${vCathode}V). Component is reverse-biased — forward current will not flow.`,
-        [comp],
-        [anode.node, cathode.node],
-        [anode, cathode],
-      ));
-    }
-  }
-  return results;
-}
-
-/**
- * RULE: POWER_CONFLICT
- * Two power sources with different voltage levels are connected to the same node.
- * This creates a direct fight between supplies.
- */
-function checkPowerConflict(
-  schematic: Schematic,
-  nodePinMap: Map<string, Pin[]>,
-): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  for (const node of schematic.nodes) {
-    const pins = nodePinMap.get(node.id) ?? [];
-    const powerPins = pins.filter(p => {
-      const type = (p.component as Component | null)?.type ?? '';
-      return (
-        type === ComponentType.PowerRail ||
-        (type === ComponentType.VoltageSource && p.name === 'positive')
-      );
-    });
-    if (powerPins.length < 2) continue;
-    const voltages = powerPins.map(p => (p.component as Component).params.value);
-    const unique = [...new Set(voltages)];
-    if (unique.length > 1) {
-      const labels = powerPins
-        .map(p => `${(p.component as Component).label}(${(p.component as Component).params.value}V)`)
-        .join(', ');
-      results.push(violation(
-        'ERC_POWER_CONFLICT',
-        'Power Supply Conflict',
-        'error',
-        `Node "${node.name ?? node.id}": multiple power sources with different voltages connected: ${labels}. Supplies will fight each other.`,
-        powerPins.map(p => p.component as Component),
-        [node],
-        powerPins,
-      ));
-    }
-  }
-  return results;
-}
-
-/**
- * RULE: FAN_OUT
- * A single logic gate output drives more inputs than the family's rated fan-out.
- * Exceeding fan-out degrades signal integrity (VOL rises above VIL).
- */
-function checkFanOut(
-  schematic: Schematic,
-  nodePinMap: Map<string, Pin[]>,
-  limit: number,
-): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  for (const comp of schematic.components) {
-    if (comp.type !== ComponentType.LogicGate) continue;
-    const outPin = comp.pins.find(p => p.name === 'Y' || p.direction === PinDirection.Output);
-    if (!outPin?.node) continue;
-    const drivingNode = outPin.node;
-    const inputsOnNode = (nodePinMap.get(drivingNode.id) ?? []).filter(
-      p => p.direction === PinDirection.Input && p !== outPin,
-    );
-    if (inputsOnNode.length > limit) {
-      results.push(violation(
-        'ERC_FAN_OUT',
-        'Fan-Out Exceeded',
-        'warning',
-        `${comp.label}: output drives ${inputsOnNode.length} inputs (limit: ${limit}). Signal integrity may be compromised. Add a buffer or reduce load.`,
-        [comp],
-        [drivingNode],
-        [outPin],
-      ));
-    }
-  }
-  return results;
-}
-
-/**
- * RULE: NO_GROUND
- * Circuit has no ground reference node.
- * All voltages are relative — without GND, DC operating points are undefined.
- */
-function checkNoGround(schematic: Schematic): ERCViolation[] {
-  const hasGround =
-    schematic.nodes.some(n => n.isGround()) ||
-    schematic.components.some(c => c.type === ComponentType.Ground);
-  if (!hasGround) {
-    return [violation(
-      'ERC_NO_GROUND',
-      'No Ground Reference',
-      'error',
-      'Circuit has no ground (GND) reference. All node voltages are undefined. Add a GND() component.',
-    )];
-  }
-  return [];
-}
-
-/**
- * RULE: NO_CURRENT_LIMIT
- * LED or Diode directly connected to a voltage source with no series resistor
- * (or other current-limiting element) between them.
- * Exceeding max forward current will instantly destroy the component.
- */
-function checkNoCurrentLimit(
-  schematic: Schematic,
-  nodePinMap: Map<string, Pin[]>,
-): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  const leds = schematic.components.filter(
-    c => c.type === ComponentType.LED || c.type === ComponentType.Diode,
-  );
-
-  for (const led of leds) {
-    const anode = led.pins.find(p => p.name === 'anode');
-    const cathode = led.pins.find(p => p.name === 'cathode');
-    if (!anode?.node || !cathode?.node) continue;
-
-    // Check anode side for direct power source with no resistor
-    const anodePins = nodePinMap.get(anode.node.id) ?? [];
-    const cathodePins = nodePinMap.get(cathode.node.id) ?? [];
-
-    const anodeDirect = anodePins.some(p => {
-      const type = (p.component as Component | null)?.type ?? '';
-      return POWER_SOURCE_TYPES.has(type) && type !== ComponentType.Ground;
-    });
-    const cathodeGround = cathode.node.isGround() ||
-      cathodePins.some(p => (p.component as Component | null)?.type === ComponentType.Ground);
-
-    const hasResistorOnAnode = anodePins.some(
-      p => (p.component as Component | null)?.type === ComponentType.Resistor,
-    );
-    const hasResistorOnCathode = cathodePins.some(
-      p => (p.component as Component | null)?.type === ComponentType.Resistor,
-    );
-
-    if (anodeDirect && cathodeGround && !hasResistorOnAnode && !hasResistorOnCathode) {
-      results.push(violation(
-        'ERC_NO_CURRENT_LIMIT',
-        'No Current Limiting Resistor',
-        'error',
-        `${led.label}: connected directly across a supply with no current-limiting resistor. Exceeds maximum forward current — component will be destroyed.`,
-        [led],
-        [anode.node, cathode.node],
-        [anode, cathode],
-      ));
-    }
-  }
-  return results;
-}
-
-/**
- * RULE: VOLTAGE_EXCEEDED
- * Estimated supply voltage exceeds a component's maximum rated voltage.
- * (LED max forward voltage ~3.5V; standard logic 5V max; etc.)
- */
-function checkVoltageExceeded(
-  schematic: Schematic,
-  nodePinMap: Map<string, Pin[]>,
-): ERCViolation[] {
-  const results: ERCViolation[] = [];
-
-  // LED max forward voltage rating (typical)
-  const LED_MAX_VF = 3.5;
-
-  const leds = schematic.components.filter(c => c.type === ComponentType.LED);
-  for (const led of leds) {
-    const anode = led.pins.find(p => p.name === 'anode');
-    if (!anode?.node) continue;
-    const vAnode = estimateNodeVoltage(anode.node, nodePinMap);
-    if (vAnode !== undefined && vAnode > LED_MAX_VF) {
-      // Only warn if there's no current limiting resistor nearby
-      const anodePins = nodePinMap.get(anode.node.id) ?? [];
-      const hasResistor = anodePins.some(
-        p => (p.component as Component | null)?.type === ComponentType.Resistor,
-      );
-      if (!hasResistor) {
-        results.push(violation(
-          'ERC_VOLTAGE_EXCEEDED',
-          'Voltage Rating Exceeded',
-          'warning',
-          `${led.label}: supply voltage (~${vAnode}V) exceeds typical LED max forward voltage (${LED_MAX_VF}V). Add a current-limiting resistor.`,
-          [led],
-          [anode.node],
-          [anode],
-        ));
-      }
-    }
-  }
-  return results;
-}
-
-/**
- * RULE: DRIVER_CONFLICT
- * An analog output (OpAmp/VoltageSource) directly drives a digital logic input,
- * or a digital output drives an analog input, without interface circuitry.
- */
-function checkDriverConflict(
-  schematic: Schematic,
-  nodePinMap: Map<string, Pin[]>,
-): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  for (const node of schematic.nodes) {
-    const pins = nodePinMap.get(node.id) ?? [];
-    const analogOutputs = pins.filter(p => {
-      const type = (p.component as Component | null)?.type ?? '';
-      return ANALOG_OUTPUT_TYPES.has(type) && p.direction === PinDirection.Output;
-    });
-    const digitalInputs = pins.filter(p => {
-      const type = (p.component as Component | null)?.type ?? '';
-      return DIGITAL_TYPES.has(type) && p.direction === PinDirection.Input;
-    });
-    if (analogOutputs.length > 0 && digitalInputs.length > 0) {
-      const aLabels = analogOutputs.map(p => (p.component as Component).label).join(', ');
-      const dLabels = digitalInputs.map(p => (p.component as Component).label).join(', ');
-      results.push(violation(
-        'ERC_DRIVER_CONFLICT',
-        'Analog/Digital Interface',
-        'info',
-        `Node "${node.name ?? node.id}": analog output (${aLabels}) directly drives digital input (${dLabels}). Verify voltage levels match logic thresholds or add a comparator/level-shifter.`,
-        [...analogOutputs, ...digitalInputs].map(p => p.component as Component),
-        [node],
-      ));
-    }
-  }
-  return results;
-}
-
-/**
- * RULE: TRANSISTOR_NO_DRIVE
- * BJT base pin or MOSFET gate pin is not connected to any node.
- * Without a control signal, the transistor cannot switch.
- */
-function checkTransistorNoDrive(schematic: Schematic): ERCViolation[] {
-  const results: ERCViolation[] = [];
-  const transistors = schematic.components.filter(c =>
-    c.type === ComponentType.BJT ||
-    c.type === ComponentType.NPN ||
-    c.type === ComponentType.PNP ||
-    c.type === ComponentType.MOSFET ||
-    c.type === ComponentType.NMOS ||
-    c.type === ComponentType.PMOS ||
-    c.type === ComponentType.NJFET ||
-    c.type === ComponentType.PJFET,
-  );
-  for (const t of transistors) {
-    // BJT control = Base (B), FET control = Gate (G)
-    const controlPin = t.pins.find(p => p.name === 'B' || p.name === 'G');
-    if (controlPin && !controlPin.isConnected()) {
-      const pinName = controlPin.name === 'B' ? 'Base' : 'Gate';
-      results.push(violation(
-        'ERC_TRANSISTOR_NO_DRIVE',
-        'Transistor Control Pin Floating',
-        'warning',
-        `${t.label}: ${pinName} pin is not connected. The transistor has no control signal and will have undefined state.`,
-        [t], [], [controlPin],
-      ));
-    }
-  }
-  return results;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Main ERC Runner
-// ─────────────────────────────────────────────────────────────
-
-const DEFAULT_RULES: Required<ERCRuleSet> = {
-  shortCircuit: true,
-  outputConflict: true,
-  floatingInput: true,
-  missingPowerPin: true,
-  reversePolarity: true,
-  powerConflict: true,
-  fanOut: true,
-  noGround: true,
-  noCurrentLimit: true,
-  voltageExceeded: true,
-  driverConflict: true,
-  transistorNoDrive: true,
-};
-
-/**
- * Run all enabled ERC rules against a schematic.
+ * Run the enabled ERC rules against a schematic.
  *
  * @example
  * const circuit = Circuit('LED Driver', DC(5), R(330), LED(RED), GND());
  * const result = runERC(circuit);
- * if (!result.passed) console.log(result.summary());
+ * if (!result.passed) console.log(result.report());
+ *
+ * @example Tune strictness
+ * runERC(circuit, {
+ *   preset: 'relaxed',
+ *   severity: { missingDecoupling: 'off', fanOut: 'warning' },
+ *   fanOutLimit: 4,
+ * });
  */
 export function runERC(schematic: Schematic, options: ERCOptions = {}): ERCResult {
-  const rules: Required<ERCRuleSet> = { ...DEFAULT_RULES, ...options.rules };
-  const fanOutLimit = options.fanOutLimit ?? 10;
-
-  const nodePinMap = buildNodePinMap(schematic);
+  const resolved = resolveOptions(options);
+  const ctx = new ERCContext(schematic);
   const violations: ERCViolation[] = [];
 
-  if (rules.noGround)          violations.push(...checkNoGround(schematic));
-  if (rules.shortCircuit)      violations.push(...checkShortCircuit(schematic, nodePinMap));
-  if (rules.outputConflict)    violations.push(...checkOutputConflict(schematic, nodePinMap));
-  if (rules.floatingInput)     violations.push(...checkFloatingInput(schematic, nodePinMap));
-  if (rules.missingPowerPin)   violations.push(...checkMissingPowerPin(schematic));
-  if (rules.reversePolarity)   violations.push(...checkReversePolarity(schematic, nodePinMap));
-  if (rules.powerConflict)     violations.push(...checkPowerConflict(schematic, nodePinMap));
-  if (rules.fanOut)            violations.push(...checkFanOut(schematic, nodePinMap, fanOutLimit));
-  if (rules.noCurrentLimit)    violations.push(...checkNoCurrentLimit(schematic, nodePinMap));
-  if (rules.voltageExceeded)   violations.push(...checkVoltageExceeded(schematic, nodePinMap));
-  if (rules.driverConflict)    violations.push(...checkDriverConflict(schematic, nodePinMap));
-  if (rules.transistorNoDrive) violations.push(...checkTransistorNoDrive(schematic));
+  for (const rule of ERC_RULES) {
+    const severity = resolveSeverity(rule, resolved.preset, options.rules, options.severity);
+    if (severity === null) continue;
 
-  return new ERCResult(violations);
+    // A user-specified severity override pins every occurrence of that rule,
+    // overriding per-finding escalation.
+    const pinned = options.severity?.[rule.key] ?? options.severity?.[rule.id];
+
+    for (const finding of rule.check(ctx, resolved)) {
+      const violation = toViolation(rule, severity, finding);
+      if (pinned !== undefined && pinned !== 'off') violation.severity = pinned;
+      violations.push(violation);
+    }
+  }
+
+  violations.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+  return new ERCResult(violations, resolved);
 }
 
-// Register runERC on Schematic so schematic.erc() works without circular deps
-// This runs once when the erc module is first imported.
+// Register runERC on Schematic so `schematic.erc()` works without a circular
+// import. This runs once, when the erc module is first loaded.
 Schematic._ercRunner = runERC;

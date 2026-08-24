@@ -4,7 +4,7 @@
  */
 
 import { Component } from '../Component';
-import { ComponentType } from '../types';
+import { ComponentType, PinDirection, PinType } from '../types';
 import { Pin } from '../Pin';
 import { formatWithUnit } from '../units';
 
@@ -18,22 +18,25 @@ export class PowerRail extends Component {
   readonly railName: string;
 
   constructor(voltage: number, name: string = 'VCC') {
+    // No explicit label: let the counter produce VCC1, VCC2, … so two rails
+    // in the same circuit stay distinguishable in ERC and netlist export.
     super(ComponentType.PowerRail, {
       value: voltage,
       unit: 'V',
       railName: name,
-    }, name);
+    });
     
     this.voltage = voltage;
     this.railName = name;
   }
 
   protected createPins(): Pin[] {
-    return [new Pin('out')];
+    return [new Pin('out', PinDirection.Output, PinType.PowerOut)];
   }
 
   protected getTypePrefix(): string {
-    return this.railName;
+    // Runs from the base constructor, before `this.railName` is assigned.
+    return String(this.params.railName ?? 'VCC');
   }
 
   /** The output pin */

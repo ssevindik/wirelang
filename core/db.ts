@@ -62,10 +62,21 @@ function extractExtras(component: Component): Record<string, unknown> | undefine
 }
 
 export function compileDslToDb(schematic: Schematic): WireScriptDb {
+  // A node is ground if it is *named* GND/0, or if a Ground() component sits on
+  // it. The DSL creates anonymous nodes, so the component is usually the only
+  // evidence — without this, SPICE export would not emit net 0.
+  const groundNodeIds = new Set<string>();
+  for (const component of schematic.components) {
+    if (component.type !== ComponentType.Ground) continue;
+    for (const pin of component.pins) {
+      if (pin.node) groundNodeIds.add(pin.node.id);
+    }
+  }
+
   const nodes: DbNode[] = schematic.nodes.map((node: Node) => ({
     id: node.id,
     name: node.name,
-    isGround: node.isGround(),
+    isGround: node.isGround() || groundNodeIds.has(node.id),
   }));
 
   const components: DbComponent[] = schematic.components.map((component: Component) => {

@@ -26,6 +26,9 @@
  *
  *   compile    <input.ts|.ws>  → db json   (legacy alias for from-ws / ts module)
  *   decompile  <input.json>    → ws/ts     (legacy alias for to-ws)
+ *
+ *   erc        <input>                      ← Electrical Rule Check
+ *   rules                                   ← list every ERC rule
  */
 
 import { promises as fs } from 'fs';
@@ -42,6 +45,7 @@ import {
 import { exportNetlist, importNetlist, type NetlistFormat } from './netlist';
 import { exportWs, importWs } from './ws';
 import { Schematic } from './Schematic';
+import { runERC, listERCRules, type ERCOptions, type ERCPreset, type ERCSeverityMap } from './erc';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Format detection helpers
@@ -165,6 +169,33 @@ function evalPlainDsl(src: string, filePath: string): Schematic {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Schematic loader (for commands that need the live IR, not just the DB)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Load any supported input format as an in-memory `Schematic`.
+ *
+ * TypeScript modules and plain `.ws` sources are evaluated directly. Every
+ * other format is normalised through the DB backbone and re-evaluated from its
+ * generated DSL, which is the same round-trip `decompile` performs.
+ */
+async function loadSchematic(
+  filePath: string,
+  format?: string,
+  exportName?: string,
+): Promise<Schematic> {
+  const absolutePath = path.resolve(filePath);
+  const src = await fs.readFile(absolutePath, 'utf-8');
+  const fmt = resolveInputFormat(filePath, src, format);
+
+  if (fmt === 'ts') return loadTsModule(absolutePath, exportName);
+  if (fmt === 'ws') return evalPlainDsl(src, absolutePath);
+
+  const db = await loadDb(filePath, format, exportName);
+  return evalPlainDsl(exportWs(db), absolutePath);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Serialize DB to a target format string
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -281,6 +312,21 @@ function printUsage(): void {
   console.log('  wirescript compile       <input.ts|.ws>  [--out file.json]  (= from-ws/ts)');
   console.log('  wirescript decompile     <input.json>    [--format ws|ts]   (= to-ws/ts)');
   console.log('');
+  console.log('Electrical Rule Check:');
+  console.log('  wirescript erc           <input>         [options]   (alias: check)');
+  console.log('  wirescript rules                         [--json]    List every ERC rule');
+  console.log('');
+  console.log('    --preset <p>            strict | balanced (default) | relaxed');
+  console.log('    --off <keys>            Disable rules, comma-separated');
+  console.log('    --severity <k>=<v>      Override severity: error|warning|info|off');
+  console.log('    --fan-out <n>           Logic fan-out limit (default 10)');
+  console.log('    --resistor-power <w>    Assumed resistor rating in watts (default 0.25)');
+  console.log('    --json                  Machine-readable output');
+  console.log('    --quiet                 One line per violation, no hints');
+  console.log('    --strict-exit           Exit 1 on warnings too (CI gate)');
+  console.log('');
+  console.log('  Exit code is 1 when any error-severity violation is found.');
+  console.log('');
   console.log('Examples:');
   console.log('  wirescript convert circuit.ws --to netlist --out circuit.net');
   console.log('  wirescript convert circuit.net --to ws --out circuit.ws');
@@ -288,6 +334,105 @@ function printUsage(): void {
   console.log('  wirescript convert circuit.net --to db --out circuit.json');
   console.log('  wirescript to-ws circuit.net');
   console.log('  wirescript from-netlist circuit.net | wirescript to-ws /dev/stdin');
+  console.log('  wirescript erc circuit.ws');
+  console.log('  wirescript erc circuit.ts --preset strict --strict-exit');
+  console.log('  wirescript erc circuit.net --off missingDecoupling,fanOut --json');
+  console.log('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ERC command
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ERC_PRESETS: ERCPreset[] = ['strict', 'balanced', 'relaxed'];
+
+/** Build ERCOptions from CLI flags. */
+function parseErcOptions(args: string[]): ERCOptions {
+  const options: ERCOptions = {};
+
+  const preset = getArgValue(args, '--preset');
+  if (preset) {
+    if (!ERC_PRESETS.includes(preset as ERCPreset)) {
+      throw new Error(`Unknown preset "${preset}". Use: ${ERC_PRESETS.join(' | ')}`);
+    }
+    options.preset = preset as ERCPreset;
+  }
+
+  const fanOut = getArgValue(args, '--fan-out');
+  if (fanOut !== undefined) options.fanOutLimit = Number(fanOut);
+
+  const power = getArgValue(args, '--resistor-power');
+  if (power !== undefined) options.resistorPowerRating = Number(power);
+
+  // --off rule1,rule2   /   --severity rule=warning,other=off
+  const severity: ERCSeverityMap = {};
+  const off = getArgValue(args, '--off');
+  if (off) for (const key of off.split(',')) severity[key.trim()] = 'off';
+
+  const overrides = getArgValue(args, '--severity');
+  if (overrides) {
+    for (const pair of overrides.split(',')) {
+      const [key, value] = pair.split('=').map(x => x.trim());
+      if (!key || !value) throw new Error(`Bad --severity entry "${pair}". Use rule=error|warning|info|off`);
+      severity[key] = value as ERCSeverityMap[string];
+    }
+  }
+  if (Object.keys(severity).length > 0) options.severity = severity;
+
+  return options;
+}
+
+/**
+ * `wirescript erc <input>` — run the Electrical Rule Check.
+ * Exits 1 when any error-severity violation is reported.
+ */
+async function runErcCommand(args: string[]): Promise<void> {
+  const inputPath = args[1];
+  if (!inputPath) { printUsage(); process.exit(1); }
+
+  const schematic = await loadSchematic(
+    inputPath,
+    getArgValue(args, '--from'),
+    getArgValue(args, '--export'),
+  );
+  const result = runERC(schematic, parseErcOptions(args));
+
+  if (hasFlag(args, '--json')) {
+    const json = JSON.stringify(result.toJSON(), null, 2);
+    await writeOutput(json, getArgValue(args, '--out'), 'erc → json');
+  } else {
+    const text = hasFlag(args, '--quiet') ? result.summary() : result.report();
+    await writeOutput(text, getArgValue(args, '--out'), 'erc');
+  }
+
+  // `--strict-exit` also fails the run on warnings, for CI gates.
+  const failed = hasFlag(args, '--strict-exit')
+    ? result.errors.length + result.warnings.length > 0
+    : result.errors.length > 0;
+  if (failed) process.exit(1);
+}
+
+/** `wirescript rules` — print the rule catalogue. */
+function runRulesCommand(args: string[]): void {
+  const rules = listERCRules();
+  if (hasFlag(args, '--json')) {
+    console.log(JSON.stringify(rules, null, 2));
+    return;
+  }
+  console.log('');
+  console.log(`WireScript ERC — ${rules.length} rules`);
+  console.log('');
+  const width = Math.max(...rules.map(r => r.id.length));
+  console.log(`  ${'RULE'.padEnd(width)}  ${'KEY'.padEnd(26)}  BALANCED  DESCRIPTION`);
+  for (const rule of rules) {
+    console.log(
+      `  ${rule.id.padEnd(width)}  ${rule.key.padEnd(26)}  ` +
+      `${String(rule.severity.balanced).padEnd(8)}  ${rule.description}`,
+    );
+  }
+  console.log('');
+  console.log('  Disable:  --off <key>[,<key>]        Override:  --severity <key>=warning');
+  console.log('  Presets:  --preset strict | balanced | relaxed');
   console.log('');
 }
 
@@ -312,6 +457,17 @@ async function run(): Promise<void> {
   const moduleImport = getArgValue(args, '--import');
   const name       = getArgValue(args, '--name');
   const title      = getArgValue(args, '--title');
+
+  // ── ERC ───────────────────────────────────────────────────────────────────
+  if (command === 'erc' || command === 'check') {
+    await runErcCommand(args);
+    return;
+  }
+
+  if (command === 'rules') {
+    runRulesCommand(args);
+    return;
+  }
 
   // ── Universal converter ───────────────────────────────────────────────────
   if (command === 'convert') {

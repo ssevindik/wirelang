@@ -27,10 +27,30 @@ const circuit = Circuit('LED Driver',
 
 // Validate
 const erc = runERC(circuit);
-console.log(erc.summary()); // ✅ ERC passed — no violations found.
+console.log(erc.report()); // ✅ ERC passed — no violations found.
 
 // Inspect
 console.log(circuit.getSummary());
+```
+
+Get the resistor wrong and the check tells you exactly what and why:
+
+```ts
+Circuit('Bare LED', { autoGround: false }, [
+  [VCC(12), led.anode],
+  [led.cathode, GND()],
+]);
+```
+
+```
+🔴 ERRORS (2)
+  [ERC_SUPPLY_SHORT] Net "node_1" (12V) reaches ground through LED1 with zero
+                     series resistance. This shorts the supply.
+      ↳ Add a current-limiting resistor in this path.
+  [ERC_NO_CURRENT_LIMIT] LED1: forward-biased across 12V with zero series
+                     resistance. Forward current is limited only by the supply —
+                     the LED will be destroyed.
+      ↳ Add a series resistor. For 12V and Vf=1.8V at 10mA, use about 1.02kΩ.
 ```
 
 For multi-pin components (transistors, op-amps):
@@ -67,12 +87,22 @@ Circuit('BJT Switch', [
 
 - **DSL API** — Declarative `Circuit`, `Series`, `Parallel` functions
 - **TypeScript API** — Full `Schematic` / `Node` / `Pin` model
-- **12 ERC rules** — Short circuit, polarity, fan-out, floating inputs, and more
+- **31 ERC rules** — Shorts, polarity, current and voltage ratings, power dissipation,
+  fan-out, logic levels, floating inputs, transistor drive, op-amp topology, and more.
+  Configurable severity with `strict` / `balanced` / `relaxed` presets.
 - **Component library** — Resistors, capacitors, inductors, diodes, LEDs, BJTs, MOSFETs, op-amps, logic gates
 - **SI unit helpers** — `kOhm`, `uF`, `mH`, `kHz`, `mA`, …
-- **JSON serialization** — Save/load circuits as `wirescript-db@v1` JSON
-- **CLI** — `wirescript compile` / `wirescript decompile`
-- **163 tests** passing
+- **Interoperability** — SPICE netlists, `.ws` DSL files, JSON/CSV DB round-trip
+- **CLI** — `wirescript convert` / `compile` / `decompile` / `erc` / `rules`
+- **327 tests** passing
+
+## Validate from the shell
+
+```sh
+wirescript erc circuit.ws              # exits 1 if the circuit has an error
+wirescript erc circuit.ws --preset strict --strict-exit   # CI gate
+wirescript rules                       # list all 31 rules
+```
 
 ---
 

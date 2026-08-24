@@ -52,6 +52,9 @@ export function voltageDivider(): Schematic {
   // Build series connection
   const result = Series(source, r1, r2, ground);
   applyToCircuit(s, result);
+  // Close the loop: tie the source's negative terminal to the ground net.
+  // Circuit() does this automatically; applyToCircuit does not.
+  s.autoConnectGrounds();
   
   // The midpoint between r1 and r2 is our voltage divider output
   // In this case, r1.p2 and r2.p1 are connected to the same node
@@ -78,6 +81,7 @@ export function parallelResistors(): Schematic {
   );
   
   applyToCircuit(s, result);
+  s.autoConnectGrounds();
   return s;
 }
 
@@ -114,6 +118,7 @@ export function lcTankCircuit(): Schematic {
   );
   
   applyToCircuit(s, result);
+  s.autoConnectGrounds();
   return s;
 }
 
@@ -139,6 +144,7 @@ export function trafficLight(): Schematic {
   );
   
   applyToCircuit(s, result);
+  s.autoConnectGrounds();
   return s;
 }
 

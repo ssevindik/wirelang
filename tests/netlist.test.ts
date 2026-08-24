@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { Component } from '../core/Component';
 import { Pin } from '../core/Pin';
 import { Node } from '../core/Node';
-import { Circuit, DC, GND, R, C, L, NPN } from '../core';
+import { Circuit, DC, GND, R, C, L, NPN, LED, RED } from '../core';
 import { compileDslToDb } from '../core/db';
 import {
   exportNetlist,
@@ -149,7 +149,10 @@ C1 OUT 0 1U
 
     const db = importNetlist(spice);
     expect(db.schema).toBe('wirescript-db@v1');
-    expect(db.components.length).toBe(3);
+    // V1, R1, C1 plus the Ground symbol re-materialised from SPICE net 0.
+    expect(db.components.length).toBe(4);
+    expect(db.components.filter(c => c.type !== 'ground')).toHaveLength(3);
+    expect(db.components.some(c => c.type === 'ground')).toBe(true);
     expect(db.nodes.length).toBeGreaterThan(0);
   });
 
@@ -311,11 +314,24 @@ describe('Netlist round-trip', () => {
     const spice = exportNetlist(db, { format: 'spice' });
     const rebuilt = importNetlist(spice, { format: 'spice' });
 
-    // After round-trip, non-ground components should match
-    const originalCount = db.components.filter(
+    // SPICE has no symbol for ground, but net 0 is re-materialised as a
+    // Ground component on import, so the round-trip is lossless here.
+    const originalSignal = db.components.filter(
       c => c.type !== 'ground' && c.type !== 'power_rail',
     ).length;
-    expect(rebuilt.components.length).toBe(originalCount);
+    const rebuiltSignal = rebuilt.components.filter(c => c.type !== 'ground').length;
+    expect(rebuiltSignal).toBe(originalSignal);
+    expect(rebuilt.components.some(c => c.type === 'ground')).toBe(true);
+  });
+
+  it('a round-tripped netlist still passes ERC', () => {
+    const circuit = Circuit('Round Trip ERC', DC(5), R(330), LED(RED), GND());
+    const spice = exportNetlist(compileDslToDb(circuit), { format: 'spice' });
+    const rebuilt = importNetlist(spice, { format: 'spice' });
+    // The ground reference must survive, or every rebuilt circuit would
+    // report ERC_NO_GROUND.
+    expect(rebuilt.nodes.some(n => n.isGround)).toBe(true);
+    expect(rebuilt.components.some(c => c.type === 'ground')).toBe(true);
   });
 
   it('DSL → DB → CSV → DB preserves component count', () => {

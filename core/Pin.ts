@@ -3,7 +3,7 @@
  * Represents a connection point on a component
  */
 
-import { PinDirection, PinId } from './types';
+import { PinDirection, PinId, PinType } from './types';
 import { Node } from './Node';
 
 let pinCounter = 0;
@@ -11,17 +11,33 @@ let pinCounter = 0;
 // Forward declaration to avoid circular dependency
 type ComponentRef = { id: string; type: string };
 
+/** Fallback mapping used when a pin declares no explicit electrical type. */
+function inferPinType(direction?: PinDirection): PinType {
+  switch (direction) {
+    case PinDirection.Input: return PinType.Input;
+    case PinDirection.Output: return PinType.Output;
+    case PinDirection.Bidirectional: return PinType.Bidirectional;
+    default: return PinType.Passive;
+  }
+}
+
 export class Pin {
   readonly id: PinId;
   readonly name: string;
   readonly direction?: PinDirection;
+  /**
+   * Electrical type used by ERC. Defaults to a value inferred from
+   * `direction` (no direction → `Passive`).
+   */
+  readonly type: PinType;
   private _node: Node | null = null;
   private _component: ComponentRef | null = null;
 
-  constructor(name: string, direction?: PinDirection) {
+  constructor(name: string, direction?: PinDirection, type?: PinType) {
     this.id = `pin_${++pinCounter}`;
     this.name = name;
     this.direction = direction;
+    this.type = type ?? inferPinType(direction);
   }
 
   /**

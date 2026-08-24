@@ -167,6 +167,65 @@ wirescript decompile circuit.json --format ws --out circuit.ws
 
 ---
 
+## `erc` — Electrical Rule Check
+
+Run the [Electrical Rule Check](./erc.md) against any input format.
+
+```sh
+wirescript erc <input> [options]     # alias: check
+```
+
+Accepts `.ws`, `.ts`, `.js`, SPICE `.net`/`.cir`/`.sp`, and DB `.json`/`.csv`.
+
+### Options
+
+| Flag | Description |
+|---|---|
+| `--preset <p>` | `strict` \| `balanced` (default) \| `relaxed` |
+| `--off <keys>` | Disable rules, comma-separated (`--off fanOut,missingDecoupling`) |
+| `--severity <k>=<v>` | Override severity: `error`\|`warning`\|`info`\|`off` |
+| `--fan-out <n>` | Logic fan-out limit (default `10`) |
+| `--resistor-power <w>` | Assumed resistor rating in watts (default `0.25`) |
+| `--json` | Machine-readable output |
+| `--quiet` | One line per violation, no fix hints |
+| `--strict-exit` | Exit 1 on warnings too |
+| `--out <file>` | Write to a file instead of stdout |
+| `--from <format>` | Force input format |
+
+**Exit code is `1` when any error-severity violation is found**, so it works as a CI gate
+with no extra scripting.
+
+```sh
+wirescript erc circuit.ws
+wirescript erc circuit.ts --preset strict --strict-exit
+wirescript erc circuit.net --off missingDecoupling --json --out erc.json
+```
+
+```yaml
+# GitHub Actions
+- run: npx wirescript erc circuits/*.ws --preset strict
+```
+
+---
+
+## `rules` — List ERC rules
+
+```sh
+wirescript rules            # table of every rule, key and default severity
+wirescript rules --json     # same catalogue as JSON
+```
+
+```
+WireScript ERC — 31 rules
+
+  RULE                       KEY                 BALANCED  DESCRIPTION
+  ERC_EMPTY_CIRCUIT          emptyCircuit        error     The schematic contains no components.
+  ERC_NO_GROUND              noGround            error     The circuit has no 0V reference, …
+  …
+```
+
+---
+
 ## Pipeline Examples
 
 All commands compose via stdin/stdout:
@@ -188,6 +247,10 @@ wirescript convert circuit.ws --to netlist \
 # .ts → DB CSV
 wirescript compile my-circuit.ts \
   | wirescript to-db /dev/stdin --format csv --out circuit.db.csv
+
+# Validate before exporting for manufacture
+wirescript erc circuit.ws --preset strict \
+  && wirescript convert circuit.ws --to netlist --out circuit.net
 ```
 
 ---
@@ -205,6 +268,8 @@ wirescript compile my-circuit.ts \
 | `decompile` | `db2dsl` | `.json`/`.csv` | `.ws`/`.ts` |
 | `from-ws` | — | `.ws` | `.json` |
 | `from-netlist` | `import-netlist` | `.net` | `.json` |
+| `erc` | `check` | any | report / JSON (exit 1 on error) |
+| `rules` | — | — | rule catalogue |
 
 ---
 

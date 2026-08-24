@@ -79,12 +79,24 @@ export function Series(...items: Connectable[]): ConnectionResult {
       firstPin = terminals.first;
     }
 
-    // Connect previous item's last pin to current item's first pin
+    // Connect previous item's last pin to current item's first pin.
+    //
+    // Reuse a node either pin already sits on. A ConnectionResult's virtual
+    // terminals (Parallel's `parallel_in` / `parallel_out`) are already wired to
+    // the block's nodes — moving them onto a fresh node would silently
+    // disconnect everything inside the block.
     if (i > 0 && lastPin) {
-      const node = new Node();
-      allNodes.push(node);
-      lastPin.connectTo(node);
-      terminals.first.connectTo(node);
+      let node: Node;
+      if (lastPin.isConnected() && lastPin.node) {
+        node = lastPin.node;
+      } else if (terminals.first.isConnected() && terminals.first.node) {
+        node = terminals.first.node;
+      } else {
+        node = new Node();
+        allNodes.push(node);
+      }
+      if (!lastPin.isConnectedTo(node)) lastPin.connectTo(node);
+      if (!terminals.first.isConnectedTo(node)) terminals.first.connectTo(node);
     }
 
     lastPin = terminals.last;

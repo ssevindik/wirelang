@@ -5,7 +5,7 @@
  */
 
 import { Component } from '../Component';
-import { ComponentType, PinDirection } from '../types';
+import { ComponentType, PinDirection, PinType } from '../types';
 import { Pin } from '../Pin';
 import { formatWithUnit } from '../units';
 
@@ -55,8 +55,8 @@ export class NOTGate extends LogicGate {
 
   protected createPins(): Pin[] {
     return [
-      new Pin('A', PinDirection.Input),
-      new Pin('Y', PinDirection.Output),
+      new Pin('A', PinDirection.Input, PinType.Input),
+      new Pin('Y', PinDirection.Output, PinType.Output),
     ];
   }
 
@@ -79,9 +79,9 @@ abstract class TwoInputGate extends LogicGate {
 
   protected createPins(): Pin[] {
     return [
-      new Pin('A', PinDirection.Input),
-      new Pin('B', PinDirection.Input),
-      new Pin('Y', PinDirection.Output),
+      new Pin('A', PinDirection.Input, PinType.Input),
+      new Pin('B', PinDirection.Input, PinType.Input),
+      new Pin('Y', PinDirection.Output, PinType.Output),
     ];
   }
 
@@ -120,14 +120,14 @@ export class NORGate extends TwoInputGate {
 
 export class LogicHigh extends Component {
   constructor() {
-    super('logic_high' as ComponentType, {
+    super(ComponentType.LogicHigh, {
       value: 1,
       unit: 'logic',
     });
   }
 
   protected createPins(): Pin[] {
-    return [new Pin('out', PinDirection.Output)];
+    return [new Pin('out', PinDirection.Output, PinType.PowerOut)];
   }
 
   protected getTypePrefix(): string {
@@ -144,14 +144,14 @@ export class LogicHigh extends Component {
 
 export class LogicLow extends Component {
   constructor() {
-    super('logic_low' as ComponentType, {
+    super(ComponentType.LogicLow, {
       value: 0,
       unit: 'logic',
     });
   }
 
   protected createPins(): Pin[] {
-    return [new Pin('out', PinDirection.Output)];
+    return [new Pin('out', PinDirection.Output, PinType.PowerOut)];
   }
 
   protected getTypePrefix(): string {
@@ -175,7 +175,7 @@ export class ClockSource extends Component {
   readonly dutyCycle: number;
 
   constructor(frequency: number, dutyCycle: number = 0.5) {
-    super('clock' as ComponentType, {
+    super(ComponentType.Clock, {
       value: frequency,
       unit: 'Hz',
       dutyCycle,
@@ -185,7 +185,7 @@ export class ClockSource extends Component {
   }
 
   protected createPins(): Pin[] {
-    return [new Pin('out', PinDirection.Output)];
+    return [new Pin('out', PinDirection.Output, PinType.Output)];
   }
 
   protected getTypePrefix(): string {

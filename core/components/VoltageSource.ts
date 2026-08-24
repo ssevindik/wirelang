@@ -3,7 +3,7 @@
  */
 
 import { Component } from '../Component';
-import { ComponentType, SourceType, PinDirection } from '../types';
+import { ComponentType, SourceType, PinDirection, PinType } from '../types';
 import { Pin } from '../Pin';
 import { formatWithUnit } from '../units';
 
@@ -36,8 +36,8 @@ export class VoltageSource extends Component {
 
   protected createPins(): Pin[] {
     return [
-      new Pin('positive', PinDirection.Output),
-      new Pin('negative', PinDirection.Input),
+      new Pin('positive', PinDirection.Output, PinType.PowerOut),
+      new Pin('negative', PinDirection.Input, PinType.PowerOut),
     ];
   }
 
