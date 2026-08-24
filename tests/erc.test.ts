@@ -108,6 +108,28 @@ describe('ERC_NO_GROUND', () => {
       'ERC_NO_GROUND',
     );
   });
+
+  it('autoGround places a GND symbol on the source return path', () => {
+    const v = DC(5), r = R(kOhm(1));
+    const circuit = Circuit('auto', [
+      [v.pin('positive'), r.pin('1')],
+      [r.pin('2'), v.pin('negative')],
+    ]);
+    // The symbol is really placed, not inferred: a source's negative terminal
+    // is never an implicit 0V reference on its own.
+    expect(circuit.components.some(c => c.type === ComponentType.Ground)).toBe(true);
+    expect(runERC(circuit).violations).toEqual([]);
+  });
+
+  it('autoGround: false leaves the missing reference an error', () => {
+    const v = DC(5), r = R(kOhm(1));
+    const circuit = Circuit('manual', { autoGround: false }, [
+      [v.pin('positive'), r.pin('1')],
+      [r.pin('2'), v.pin('negative')],
+    ]);
+    expect(circuit.components.some(c => c.type === ComponentType.Ground)).toBe(false);
+    expect(expectRule(runERC(circuit), 'ERC_NO_GROUND').severity).toBe('error');
+  });
 });
 
 describe('ERC_UNCONNECTED_PIN', () => {
@@ -193,6 +215,43 @@ describe('ERC_ISOLATED_SECTION', () => {
       runERC(Circuit('LED', DC(5), R(330), LED(RED), GND())),
       'ERC_ISOLATED_SECTION',
     );
+  });
+});
+
+describe('ERC_FLOATING_NODE', () => {
+  it('errors when a node reaches ground only through a capacitor', () => {
+    const v = DC(5), r1 = R(kOhm(1)), c1 = C(uF(1)), r2 = R(kOhm(10)), g = GND();
+    const circuit = Circuit('ac-coupled', { autoGround: false }, [
+      [v.pin('positive'), r1.pin('1')],
+      [r1.pin('2'), v.pin('negative'), g.pin('gnd')],
+      [r1.pin('2'), c1.pin('1')],
+      [c1.pin('2'), r2.pin('1')],
+      [r2.pin('2'), c1.pin('2')],
+    ]);
+    const hit = expectRule(runERC(circuit), 'ERC_FLOATING_NODE');
+    expect(hit.severity).toBe('error');
+    expect(hit.message).toContain('C1');
+  });
+
+  it('does not fire once the coupled node has a bias resistor to ground', () => {
+    const v = DC(5), r1 = R(kOhm(1)), c1 = C(uF(1)), bias = R(kOhm(100)), g = GND();
+    const circuit = Circuit('biased', { autoGround: false }, [
+      [v.pin('positive'), r1.pin('1')],
+      [r1.pin('2'), v.pin('negative'), g.pin('gnd')],
+      [r1.pin('2'), c1.pin('1')],
+      [c1.pin('2'), bias.pin('1')],
+      [bias.pin('2'), g.pin('gnd')],
+    ]);
+    expectNoRule(runERC(circuit), 'ERC_FLOATING_NODE');
+  });
+
+  it('leaves a fully isolated section to ERC_ISOLATED_SECTION', () => {
+    const stray = R(kOhm(10));
+    const circuit = Circuit('island', [
+      [DC(5), R(330), LED(RED), GND()],
+      [stray.p1, R(kOhm(22)), stray.p2],
+    ]);
+    expectNoRule(runERC(circuit), 'ERC_FLOATING_NODE');
   });
 });
 

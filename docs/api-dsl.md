@@ -28,7 +28,7 @@ Circuit(name, options, paths)
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `autoGround` | `boolean` | `true` | Auto-connects unconnected source negative pins to GND |
+| `autoGround` | `boolean` | `true` | Places a `GND()` symbol on the source return path when the circuit has none, then connects any unconnected source negative pins to it. See [the ground model](erc.md#the-ground-model). |
 
 ```ts
 // Disable autoGround (useful for op-amp circuits with explicit power pins)

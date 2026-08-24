@@ -192,6 +192,58 @@ export const isolatedSection: ERCRule = {
   },
 };
 
+/**
+ * SPICE cannot solve a node whose only route to the reference is through a
+ * capacitor: the DC operating point comes out singular. OrCAD reports this as
+ * a floating node, and it is the reason an AC-coupled stage needs a bias
+ * resistor to ground even though the signal path "looks" connected.
+ */
+export const floatingNode: ERCRule = {
+  key: 'floatingNode',
+  id: 'ERC_FLOATING_NODE',
+  name: 'No DC Path to Ground',
+  description: 'A net reaches ground only through DC-blocking elements, so it has no DC operating point.',
+  severity: { strict: 'error', balanced: 'error', relaxed: 'warning' },
+  check(ctx) {
+    if (!ctx.hasGround) return [];        // ERC_NO_GROUND already covers this
+    const findings: ERCFinding[] = [];
+
+    for (const net of ctx.nets) {
+      if (net.isGround || net.pins.length === 0) continue;
+
+      // `hasConductivePath` travels through transistors and ICs but stops at
+      // capacitors, which is exactly the question a DC operating point asks:
+      // could current ever reach the reference, not does it right now.
+      const hasDC = ctx.groundNets.some(g => ctx.hasConductivePath(net, g, undefined, 'either'));
+      if (hasDC) continue;
+
+      // Nothing at all reaches ground from here — that is an isolated section,
+      // and ERC_ISOLATED_SECTION reports it with the whole orphaned group.
+      const reachesAtAC = ctx.groundNets.some(
+        g => ctx.hasConductivePath(net, g, undefined, 'either', true),
+      );
+      if (!reachesAtAC) continue;
+
+      const blockers = net.pins
+        .map(p => ctx.componentOf(p))
+        .filter((c): c is Component => !!c && !!seriesElementOf(c)?.blocksDC);
+      const via = blockers.length > 0
+        ? blockers.map(c => c.label).join(', ')
+        : 'DC-blocking elements';
+
+      findings.push({
+        message: `Net "${net.name}" reaches ground only through ${via}. A capacitor is an open circuit at DC, so this node has no DC operating point.`,
+        hint: `Give ${net.name} a DC return to ground — a bias or pull-down resistor. Every node needs a DC path to the reference.`,
+        components: blockers,
+        nodes: [net.node],
+        pins: net.pins,
+      });
+    }
+
+    return findings;
+  },
+};
+
 export const noConnectPinUsed: ERCRule = {
   key: 'noConnectPinUsed',
   id: 'ERC_NC_PIN_CONNECTED',
@@ -643,6 +695,7 @@ export const TOPOLOGY_RULES: ERCRule[] = [
   danglingNet,
   duplicateRefDes,
   isolatedSection,
+  floatingNode,
   noConnectPinUsed,
   invalidValue,
   shortCircuit,

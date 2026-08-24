@@ -160,6 +160,62 @@ runERC(circuit, {
 
 ---
 
+## The ground model
+
+WireScript follows the OrCAD/PSpice convention: **the reference is a symbol you
+place, not something inferred from the topology.** A voltage source's negative
+terminal is a source terminal, not a 0V reference — a circuit whose only
+"ground" is `V1.negative` still reports `ERC_NO_GROUND`.
+
+Two rules fall out of that:
+
+| | Question it asks |
+|---|---|
+| `ERC_NO_GROUND` | Does a reference exist at all? |
+| `ERC_FLOATING_NODE` | Can every net reach that reference **through DC**? |
+
+The second is the one that catches AC-coupled stages. A capacitor is an open
+circuit at DC, so a node sitting behind one has no DC operating point — SPICE
+cannot solve it, and the fix is a bias resistor to ground:
+
+```ts
+// ❌ ERC_FLOATING_NODE — the node past C1 only reaches ground through C1
+[r1.pin('2'), c1.pin('1')],
+[c1.pin('2'), r2.pin('1')],
+[r2.pin('2'), c1.pin('2')],
+
+// ✅ a bias resistor gives the coupled node its DC return
+[c1.pin('2'), bias.pin('1')],
+[bias.pin('2'), gnd.gnd],
+```
+
+`ERC_FLOATING_NODE` traverses *through* transistors and ICs — the question is
+whether DC could ever reach the reference, not whether it does right now. A net
+with no route to ground at all is a different fault, and
+`ERC_ISOLATED_SECTION` reports that one with the whole orphaned group.
+
+### `autoGround` places the symbol for you
+
+So that ordinary single-supply circuits do not have to spell out the reference,
+`Circuit()` defaults to `autoGround: true`: when the circuit has no `GND()` and
+a source has a return terminal, the DSL **places a real ground symbol** on that
+return node.
+
+```ts
+const v = DC(5), r = R(kOhm(1));
+const c = Circuit('loop', [
+  [v.pin('positive'), r.pin('1')],
+  [r.pin('2'), v.pin('negative')],
+]);
+c.components;   // V1, R1, GND1  ← the symbol is really there
+```
+
+The symbol appears in `schematic.components` and exports to the netlist like
+any other. Pass `{ autoGround: false }` to keep ERC strict and place every
+reference yourself.
+
+---
+
 ## The rule catalogue
 
 Run `wirescript rules` for this table in your terminal, or `listERCRules()` from code.
@@ -172,6 +228,7 @@ Run `wirescript rules` for this table in your terminal, or `listERCRules()` from
 | `ERC_DANGLING_NET` | `danglingNet` | 🔴 | 🔴 | 🟡 | A net has only one pin on it, so no current can flow. |
 | `ERC_DUPLICATE_REFDES` | `duplicateRefDes` | 🔴 | 🔴 | 🟡 | Two components share the same label, which breaks netlist export. |
 | `ERC_ISOLATED_SECTION` | `isolatedSection` | 🟡 | 🔴 | 🔵 | A group of components has no connection to the ground reference. |
+| `ERC_FLOATING_NODE` | `floatingNode` | 🔴 | 🔴 | 🟡 | A net reaches ground only through DC-blocking elements, so it has no DC operating point. |
 | `ERC_NC_PIN_CONNECTED` | `noConnectPinUsed` | 🔴 | 🔴 | 🟡 | A pin marked no-connect has been wired to a net. |
 | `ERC_INVALID_VALUE` | `invalidValue` | 🔴 | 🔴 | 🔴 | A component parameter is outside its physically valid range. |
 | `ERC_SHORT_CIRCUIT` | `shortCircuit` | 🔴 | 🔴 | 🔴 | A source is shorted across its own terminals with no current limiting. |

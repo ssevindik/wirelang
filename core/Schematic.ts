@@ -8,6 +8,7 @@ import { Component } from './Component';
 import { Node, createGroundNode } from './Node';
 import { Pin } from './Pin';
 import { ComponentType } from './types';
+import { Ground } from './components/Ground';
 import type { ERCResult, ERCOptions } from './erc';
 
 export interface SchematicValidationResult {
@@ -260,11 +261,18 @@ export class Schematic {
     this.mergeGrounds();
 
     // Find all Ground components in the circuit
-    const groundComponents = this._components.filter(c => c.type === ComponentType.Ground);
-    
+    let groundComponents = this._components.filter(c => c.type === ComponentType.Ground);
+
     if (groundComponents.length === 0) {
-      warnings.push('No GND component found - cannot auto-connect source negatives');
-      return { connected, warnings };
+      const placed = this.placeGroundReference();
+      if (!placed) {
+        warnings.push(
+          'No GND component found and no source return terminal to attach one to - ' +
+          'cannot auto-connect source negatives',
+        );
+        return { connected, warnings };
+      }
+      groundComponents = [placed];
     }
 
     // Get the ground node (from first Ground component's pin)
@@ -295,6 +303,38 @@ export class Schematic {
     }
 
     return { connected, warnings };
+  }
+
+  /**
+   * Place a GND symbol on the circuit's return path.
+   *
+   * `autoGround` calls this so an ordinary single-supply circuit does not have
+   * to spell out the reference symbol. The symbol lands on the node the source
+   * negatives already share, so what ERC sees is the topology the user drew
+   * with the ground explicitly present — WireScript never treats a source's
+   * negative terminal as an implicit 0V reference, the same way OrCAD does not.
+   *
+   * Returns `null` when there is no return terminal to attach to, leaving
+   * ERC_NO_GROUND to report the missing reference.
+   */
+  private placeGroundReference(): Component | null {
+    const negatives = this._components
+      .filter(c =>
+        c.type === ComponentType.VoltageSource || c.type === ComponentType.CurrentSource)
+      .map(c => c.pins.find(p => p.name === 'negative'))
+      .filter((p): p is Pin => !!p);
+
+    if (negatives.length === 0) return null;
+
+    // Prefer the node the returns already share; only invent one when every
+    // negative terminal is still floating.
+    const wired = negatives.find(p => p.isConnected());
+    const node = wired?.node ?? new Node('GND');
+
+    const gnd = new Ground();
+    this.addComponent(gnd);
+    this.connect(gnd.pins[0], node);
+    return gnd;
   }
 
   /**

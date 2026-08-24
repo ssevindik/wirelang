@@ -25,7 +25,7 @@ npm install @ssevindikx/wirescript@next
 
 These now run in CI on every push, and are the evidence behind the 1.0 claims:
 
-- **529 tests**, across 16 files.
+- **534 tests**, across 16 files.
 - **Round-trip matrix** (`tests/round-trip.test.ts`) — every one of the 17
   non-deprecated component types, through all five conversion paths:
   DB, JSON, CSV, `.ws` and SPICE. A coverage test fails the build if a new
@@ -35,7 +35,41 @@ These now run in CI on every push, and are the evidence behind the 1.0 claims:
 - **Example circuits pass `--preset strict`**, the strictest ERC profile, not
   just the default.
 
+### Added
+
+- **`ERC_FLOATING_NODE`** — a net that reaches ground only through DC-blocking
+  elements has no DC operating point, which is what OrCAD/PSpice reports as a
+  floating node. A capacitor is an open circuit at DC, so an AC-coupled stage
+  needs a bias resistor to ground even though the signal path looks connected.
+
+  The rule traverses *through* transistors and ICs: the question is whether DC
+  could ever reach the reference, not whether it does right now. A net with no
+  route to ground at all stays with `ERC_ISOLATED_SECTION`, which reports the
+  whole orphaned group.
+
+  ```ts
+  Circuit('AC-coupled', { autoGround: false }, [
+    [v.pin('positive'), r1.pin('1')],
+    [r1.pin('2'), v.pin('negative'), g.gnd],
+    [r1.pin('2'), c1.pin('1')],
+    [c1.pin('2'), r2.pin('1')],      // ❌ ERC_FLOATING_NODE
+    [r2.pin('2'), c1.pin('2')],
+  ]);
+  ```
+
 ### Fixed
+
+- **`autoGround` now places the ground symbol it promised.** With no `GND()` in
+  the circuit it used to return a warning that `Circuit()` discarded, so the
+  default `autoGround: true` silently did nothing and a perfectly closed
+  single-supply loop still failed `ERC_NO_GROUND`. It now places a real `GND()`
+  on the node the source negatives share.
+
+  The symbol is genuinely placed — it appears in `schematic.components` and
+  exports to the netlist. WireScript still never *infers* a reference from
+  topology: a voltage source's negative terminal is a source terminal, not a 0V
+  reference, the same way OrCAD treats it. `{ autoGround: false }` keeps ERC
+  strict and leaves every reference to you.
 
 - `ERC_SUPPLY_SHORT` no longer fires on every current source. A current source
   asserts a current, not a voltage, so its return terminal sitting on the ground

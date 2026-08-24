@@ -40,6 +40,7 @@ export type ERCRuleKey =
   | 'danglingNet'
   | 'duplicateRefDes'
   | 'isolatedSection'
+  | 'floatingNode'
   | 'noConnectPinUsed'
   | 'invalidValue'
   // ── Power & drive ──
